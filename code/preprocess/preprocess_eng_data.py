@@ -2,6 +2,7 @@ import sys
 sys.path.append("../utils")
 import utils as ut
 import preprocess as pc
+import hydro_storage as hs
 import pandas as pd
 import xarray as xr
 from tqdm import tqdm
@@ -12,46 +13,78 @@ import glob
 # === Also saves capacity technology as a nc file =================================================================================================================================================
 # =================================================================================================================================================================================================
 
+# === Nomenclature ===
 techs = {"PV":"",
              "cooling-demand":"",
-             "heating-demand":"_fully-electrified",
+             "heating-demand":{"fully_electrified":"_fully-electrified","current_electrified":""},
              "Wind-power":"",
              "hydro_inflow":"",
              "hydro_ror":"",
             }# all technologies considered
+tech_names = ["PV","cooling-demand","heating-demand","Wind_onshore","Wind_offshore","hydro_inflow","hydro_ror"] #naming conventions for data set built here
+generation = ["PV","Wind_onshore","Wind_offshore","hydro_ror"] # variables that generate energy
+demand = ["heating-demand","cooling-demand"] # variables that demand energy
 
-tech_names = ["PV","cooling-demand","heating-demand","Wind_onshore","Wind_offshore","hydro_inflow","hydro_ror"]
-out_path = '/net/xenon/climphys/lbloin/energy_boost/'
+out_path = '/net/xenon/climphys/lbloin/energy_boost/' #save location
+
+
 if __name__ == "__main__":    
-    print("Open capacity scenarios")
-    installed_capacity = pc.get_installed_capacity(tech_names).to_dataset(name="GWh")
-    installed_capacity.to_netcdf(f"{out_path}installed_capacity_scenarios.nc")
-    print("Opens Clim2Energy output")
+    # === get Clim2Energy converted data sets for historical and SSP370 ===
+    print("Opens Clim2Energy output")        
     for scenario in ut.CESM2_REALIZATION_DICT:
         print(scenario)
         outputs = []
-        for tech in tqdm(techs):
-            if tech == "Wind-power" or tech == "PV":
-                # open spatial CFs and save them for available techs
-                pc.save_spatial_data(tech,scenario)
-            #open and save tech output
-            if tech == "Wind-power":
-                for onshore in [True, False]:
-                    ds_wind = []
-                    for turbine in ["E-126_7580","SWT120_3600","SWT142_3150"]: # average over turbine heights
-                        ds_wind.append(pc.save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected",daily="")[tech])
-                    ds_wind = xr.concat(ds_wind,dim="turbine").mean("turbine")
-                    ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
-                    outputs.append(ds_wind.to_dataset(name="energy_output"))
-            else:
-                ds = pc.save_eng_var(scenario,tech, techs[tech],daily="")[tech]
-                if tech == "hydro_inflow":
-                    ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
-                elif tech == "hydro_ror":
-                    ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
-                outputs.append(ds.to_dataset(name="energy_output"))
-        outputs = xr.concat(outputs,pd.Index(tech_names, name="technology"))
-        outputs.to_netcdf(f"{out_path}eng_vars_{scenario}.nc")
-        # get absolute output, in terms of capacity
+        # consider currently electrified and future electrified as separate scenarios
+        for heat_scenario in techs["heating-demand"]: 
+            out_heat = pc.concat_all_eng_vars(techs,scenario,out_path,heat_scenario)
+            outputs.append(xr.concat(out_heat,pd.Index(tech_names, name="technology")))
+        outputs = xr.concat(outputs,pd.Index(list(techs["heating-demand"].keys()), name="heating_scenario"))
+        # save data set of all converted energy variables for historical and SSP370                    
+        outputs.to_netcdf(f"{out_path}eng_vars_{scenario}.nc") # save 
+
+        # === Get the technology capacity scenarios considered ===
+        print("Open capacity scenarios")
+        installed_capacity = pc.get_installed_capacity(tech_names)
+        
+        # === Multiply energy variable output by installed capacity to get output in GWh (for all tech scenarios)
         abs_output = outputs["energy_output"] * installed_capacity.GWh
-        abs_output.to_dataset(name="net_load").to_netcdf(f"{out_path}net_load_{scenario}.nc")
+        abs_output.to_dataset(name="net_load").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}.nc")
+        
+        # === Calculate simple net load /without/ hydro inflow storage nor transmission effects === 
+        #sum over countries
+        abs_vars_country_sum = abs_output.sum("country")
+        abs_vars_country_sum.to_netcdf(f"{out_path}eng_vars_GWh_country_sum_{scenario}.nc")
+        #sum over technologies
+        abs_vars_tech_sum = -abs_output.sel(technology=generation).sum(dim="technology") + abs_output.sel(technology=demand).sum(dim="technology")
+        abs_vars_tech_sum.to_netcdf(f"{out_path}net_load_by_country_simple_{scenario}.nc")
+        # sum over both 
+        abs_vars_tech_sum.sum("country").to_netcdf(f"{out_path}net_load_simple_{scenario}.nc")
+    
+        # === Calculate simple net load /with/ hydro inflow storage effects === 
+        # calculate hydro_inflow (only keep countries that have hydro inflow)
+        hydro_inflow_full = abs_output.sel(technology="hydro_inflow").dropna(dim="country",how="all")
+        # open optimized storage from francesco's energy model
+        storage_ds = hs.open_storage(scenario)
+        storage_roll= storage_ds.rolling(time=24*21,center=True).mean().stack(dim=("member","time")) # rolling average to smooth the curve
+        storage_max = storage_ds.max(("member","time")) #max value, to cap the storage
+        starting_storage = storage_ds.groupby('time.dayofyear')[1].mean(("member","time")) # mean storage level on January 1st (used as starting point)
+        # calculate and save hydro storage effects
+        net_load_with_hydro = hs.storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage)
+        net_load_with_hydro.to_netcdf(f"{out_path}net_load_by_country_hydro_storage_{scenario}.nc")
+        net_load_with_hydro.sum("country").to_netcdf(f"{out_path}net_load_hydro_storage_{scenario}.nc")
+        
+        # === Calculate net load with transmission effects between countries === 
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

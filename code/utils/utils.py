@@ -11,7 +11,6 @@ rng = default_rng()
 CESM2_REALIZATION_DICT = {
     "historical": {"A": "1500", "B": "1000", "C": "1200"},
     "SSP370": {"A": "1500", "B": "0600", "C": "0900"},
-    "SSP245": {"A": "1500"},
 }
 
 def doy_to_noleap_datetime(year, doy, hour):
@@ -19,7 +18,7 @@ def doy_to_noleap_datetime(year, doy, hour):
     dt_noleap = cftime.DatetimeNoLeap(year, 1, 1, hour) + pd.Timedelta(days=doy - 1)
     return dt_noleap
     
-def country_code_to_country_name(code):
+def country_code_to_country_name(keys):
     country_codes = {
         "CH": "Switzerland",
         "IT": "Italy",
@@ -56,7 +55,12 @@ def country_code_to_country_name(code):
         "NL": "Netherlands",
     }
 
-    return country_codes[code]
+    if type(keys) == list:
+        return list( map(country_codes.get, keys) )
+    if keys == None:
+        return country_codes
+    else:
+        return country_codes[keys]
 
 def country_name_to_country_code(keys):
     country_codes = {
@@ -102,6 +106,9 @@ def country_name_to_country_code(keys):
         return country_codes[keys]
 
 def find_islands(da, threshold):
+    """
+    find the largest island of values in a data array da, that are above a certain threshold
+    """
     da_filled = da.fillna(0)
     # Label connected components
     labeled_array, num_features = label(da_filled)
@@ -115,11 +122,17 @@ def find_islands(da, threshold):
     return large_islands
 
 def fit_gev(data):
+    """
+    Fit a GEV law to a data set 
+    """
     # Fit the GEV distribution to your data and return the shape, location, and scale
     shape, loc, scale = gev.fit(data)
     return shape, loc, scale
 
 def find_return_time_naive_gev(dataset,return_level,bootstrap=1000):
+    """
+    find the return time of a return level with a GEV law fitted to a dataset, with uncertainty given by bootstrapping
+    """
     bootstrapped_dataset= xr.DataArray(data = rng.choice(dataset, size=(bootstrap, len(dataset)), replace=True))
     bootstrap_return_time = []
     for i in tqdm(range(bootstrap)):
@@ -132,3 +145,32 @@ def find_return_time_naive_gev(dataset,return_level,bootstrap=1000):
         bootstrap_return_time.append(ret)
     print(f"{np.median(bootstrap_return_time):.5},{np.quantile(bootstrap_return_time,0.025):.5},{np.quantile(bootstrap_return_time,0.975):.5}")
     return bootstrap_return_time
+
+def get_time_range(scenario):
+    """
+    Start and end years of the different scenarios covered in this analysis
+    :param scenario:
+    :return:
+    """
+    range_dict = {
+        "historical": range(1995, 2015),
+        "SSP370": range(2080, 2100),
+        "SSP245": range(2015, 2100),
+    }
+    return range_dict[scenario]
+
+def select_Europe(ds):
+    return ds.sel(lon=slice(-15, 50), lat=slice(30, 75))
+
+def zero_mean_longitudes(ds):
+    """
+    resort a dataset with longitudes from
+        0 to 360
+    to one that has longitudes from
+        -180 to 180
+    :param ds:
+    :return:
+    """
+    ds.coords["lon"] = (ds.coords["lon"] + 180) % 360 - 180
+    ds = ds.sortby("lon")
+    return ds
