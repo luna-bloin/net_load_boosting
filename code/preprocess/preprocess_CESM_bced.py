@@ -61,4 +61,6 @@ for member in members:
 # concatenate all members together to one file per scenario
 for scenario in ut.CESM2_REALIZATION_DICT:
     file = sorted(glob.glob(f"{out_path}bced_z500_{scenario}_*.nc"))
-    xr.open_mfdataset(file,concat_dim=pd.Index(members, name="member"),combine="nested").to_netcdf(f"{out_path}bced_z500_{scenario}.nc")
+    ds=xr.open_mfdataset(file,concat_dim="member",combine="nested")
+    ds["member"] = members
+    ds.to_netcdf(f"{out_path}bced_z500_{scenario}.nc")
