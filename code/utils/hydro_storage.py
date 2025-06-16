@@ -17,21 +17,20 @@ def open_storage(scenario):
     """
     file = glob.glob(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
     try :
-        xr.open_dataset(file[0])["storage"]
+        return xr.open_dataset(file[0])["storage"]
     except:
         # open pandas df 
         df = pd.read_csv(f"../inputs/storage_level_reservoir_hydro_{scenario}.csv", index_col=[0,1,2]).droplevel('technology')
-        # NB: scenario here is the parallel simulations. this will change below
-        df.index.names = ['scenario', 'country']
+        df.index.names = ['parallel_sims', 'country']
         df.index = df.index.set_levels(
             [
                 df.index.levels[0].str.extract(r'(\d+)')[0].astype(int)
-                if level.name == 'scenario' else level
+                if level.name == 'parallel_sims' else level
                 for level in df.index.levels
             ]
         )
         # sort the index
-        df = df.sort_index(level='scenario')
+        df = df.sort_index(level='parallel_sims')
 
         # Parameters
         members = ['A', 'B', 'C']
@@ -79,7 +78,8 @@ def open_storage(scenario):
         # Assign the combined datetime coordinate
         da_stacked = da_stacked.assign_coords(year_time=times)
         # # Rename the stacked dimension to 'time' for clarity
-        ds_storage = da_stacked.rename({'year_time': 'time'}).to_dataset(name="storage")
+        da_stacked = da_stacked.rename({'year_time': 'time'})
+        ds_storage = da_stacked.to_dataset(name="storage")
         ds_storage.to_netcdf(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
         return ds_storage["storage"]
 
@@ -197,12 +197,39 @@ def storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_
                 #select specific realization of net load and inflow datasets
                 net_load_specific = abs_vars_tech_sum.sel(capacity_scenario=capacity_scenario,member=member,heating_scenario=heat_scenario)
                 hydro_inflow = hydro_inflow_full.sel(capacity_scenario=capacity_scenario,member=member,heating_scenario=heat_scenario)
+                max_capac = get_hydro_capac(hydro_inflow.country.values).max_capac
                 # calculate adjusted net load and storage
-                adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,qu)
+                adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,qu,max_capac)
                 adjusted_net_load_mem.append(adjusted_net_load)
             adjusted_net_load_heat_scenario.append(xr.concat(adjusted_net_load_mem,dim=pd.Index(abs_vars_tech_sum.member.values, name="member")))
         adjusted_net_load_capac.append(xr.concat(adjusted_net_load_heat_scenario,dim=pd.Index(list(techs["heating-demand"].keys()), name="heating_scenario")))
     return xr.concat(adjusted_net_load_capac,dim=pd.Index(abs_vars_tech_sum.capacity_scenario.values, name="capacity_scenario"))
+
+def get_hydro_capac(countries):
+    df_jrc = pd.read_csv("/net/xenon/climphys/lbloin/CESM2energy/inputs/jrc-hydro-power-plant-database.csv")
+    type_code = ["HDAM", "HPHS"]
+    max_capac = []
+    max_storage = []
+    for country in countries:
+        country_code = ut.country_name_to_country_code(country)
+        
+        df_hydro_country = df_jrc[
+                        (df_jrc["type"].isin(type_code))  # correct technologies 
+                        & (
+                            df_jrc["country_code"] == country_code # correct country
+                        )]
+        max_capac.append(df_hydro_country["installed_capacity_MW"].sum()/1000) #GW
+        max_storage.append(df_hydro_country["storage_capacity_MWh"].sum()/1000) # GWh
+    ds_hydro_capac = xr.Dataset(
+        data_vars=dict(
+            max_capac=(["country"], max_capac),
+            max_storage=(["country"], max_storage),
+        ),
+        coords=dict(
+            country=countries,
+        ),
+    )
+    return ds_hydro_capac
 
 
 

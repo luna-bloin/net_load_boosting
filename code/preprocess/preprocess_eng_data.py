@@ -47,20 +47,23 @@ if __name__ == "__main__":
         installed_capacity = pc.get_installed_capacity(tech_names)
         
         # === Multiply energy variable output by installed capacity to get output in GWh (for all tech scenarios)
+        print("Calculate absolute generation")
         abs_output = outputs["energy_output"] * installed_capacity.GWh
-        abs_output.to_dataset(name="net_load").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}.nc")
+        # abs_output.to_dataset(name="net_load").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}.nc")
         
-        # === Calculate simple net load /without/ hydro inflow storage nor transmission effects === 
-        #sum over countries
+        # # === Calculate simple net load /without/ hydro inflow storage nor transmission effects === 
+        # print("Calculate simple net load with no extra effects")
+        # #sum over countries
         abs_vars_country_sum = abs_output.sum("country")
-        abs_vars_country_sum.to_netcdf(f"{out_path}eng_vars_GWh_country_sum_{scenario}.nc")
-        #sum over technologies
+        # abs_vars_country_sum.to_netcdf(f"{out_path}eng_vars_GWh_country_sum_{scenario}.nc")
+        # #sum over technologies
         abs_vars_tech_sum = -abs_output.sel(technology=generation).sum(dim="technology") + abs_output.sel(technology=demand).sum(dim="technology")
-        abs_vars_tech_sum.to_netcdf(f"{out_path}net_load_by_country_simple_{scenario}.nc")
-        # sum over both 
-        abs_vars_tech_sum.sum("country").to_netcdf(f"{out_path}net_load_simple_{scenario}.nc")
+        # abs_vars_tech_sum.to_netcdf(f"{out_path}net_load_by_country_simple_{scenario}.nc")
+        # # sum over both 
+        # abs_vars_tech_sum.sum("country").to_netcdf(f"{out_path}net_load_simple_{scenario}.nc")
     
         # === Calculate simple net load /with/ hydro inflow storage effects === 
+        print("Calculate simple net load with hydro storage")
         # calculate hydro_inflow (only keep countries that have hydro inflow)
         hydro_inflow_full = abs_output.sel(technology="hydro_inflow").dropna(dim="country",how="all")
         # open optimized storage from francesco's energy model
