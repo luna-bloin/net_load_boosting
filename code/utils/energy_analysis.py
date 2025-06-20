@@ -7,7 +7,7 @@ import utils as ut
 in_path = "/net/xenon/climphys/lbloin/energy_boost/"
 class EnergyAnalysis:
 
-    def __init__(self, year,member,capacity_scenario,period):
+    def __init__(self, year,member,capacity_scenario,heating_scenario,period):
         """
         Initialize the energy analysis with the given energy system model and scenario.
 
@@ -29,11 +29,11 @@ class EnergyAnalysis:
         # self.production = pd.read_csv(f'{in_path}generation_{year}_{member}_{capacity_scenario}.csv', index_col=[0])
         # self.demand is pandas DataFrame with index as country codes (e.g. 'DE', 'FR') and columns as timesteps (from 0 to 8759). It combines electricity demand, and electricity demand for heating.
         # self.demand = pd.read_csv(f'{in_path}demand_{year}_{member}_{capacity_scenario}.csv', index_col=[0])
-        file = glob.glob(f'{in_path}net_load{year}_{member}_{capacity_scenario}.csv')
+        file = glob.glob(f'{in_path}net_load{year}_{member}_{capacity_scenario}_{heating_scenario}.csv')
         if file != []:
             self.net_load = pd.read_csv(file[0], index_col=[0])
         else:
-            net_load_data = xr.open_dataset(f"{in_path}net_load_adjusted_{period}.nc").sel(member=member,capacity_scenario=capacity_scenario,time=year).convert_calendar("noleap").net_load_adjusted
+            net_load_data = xr.open_dataset(f"{in_path}net_load_by_country_hydro_storage_{period}.nc").sel(member=member,capacity_scenario=capacity_scenario,heating_scenario=heating_scenario,time=year).convert_calendar("noleap").net_load_adjusted
             df = net_load_data.to_pandas()
             df.columns = range(df.shape[1])
             # If there's a name on the columns (like 'time'), remove it
@@ -43,7 +43,7 @@ class EnergyAnalysis:
             # Step 2: Replace full country names with codes
             country_to_code = ut.country_name_to_country_code(None)
             df.rename(index=country_to_code, inplace=True)
-            df.to_csv(f'{in_path}net_load{year}_{member}_{capacity_scenario}.csv')
+            df.to_csv(f'{in_path}net_load{year}_{member}_{capacity_scenario}_{heating_scenario}.csv')
             self.net_load = df
         self.dt = pd.date_range(start=f'{year}-01-01', periods=8760, freq='h')
 
