@@ -3,6 +3,7 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import cftime
+import datetime
 from tqdm import tqdm
 from scipy.stats import genextreme as gev
 from numpy.random import default_rng
@@ -32,6 +33,7 @@ def country_code_to_country_name(keys):
         "UK": "United Kingdom",
         "FI": "Finland",
         "EL": "Greece",
+        "GR": "Greece", #greece has two codes for some reason
         "RO": "Romania",
         "AL": "Albania",
         "BG": "Bulgaria",
@@ -174,3 +176,11 @@ def zero_mean_longitudes(ds):
     ds.coords["lon"] = (ds.coords["lon"] + 180) % 360 - 180
     ds = ds.sortby("lon")
     return ds
+
+def get_time_range_noleap(start_year,end_year):    
+    # Total hours = 20 years × 365 days/year × 24 hours/day
+    n_hours = ( end_year - start_year ) * 365 * 24
+    
+    # Generate hourly time range
+    start = cftime.DatetimeNoLeap(start_year, 1, 1, 0)
+    return np.array([start + datetime.timedelta(hours=i) for i in range(n_hours)])
