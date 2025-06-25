@@ -123,6 +123,17 @@ def find_islands(da, threshold):
     large_islands = [da.where(mask).dropna("time") for mask in large_islands_masks]
     return large_islands
 
+def find_longest_islands(arr):
+    # Find change points (start and end of 1s)
+    nonzero_mask = arr != 0
+    change_points = np.diff(np.concatenate(([0], nonzero_mask, [0])))
+    start_indices = np.where(change_points == 1)[0]  # Start of each cumulative sum
+    end_indices = np.where(change_points == -1)[0] - 1  # End of each cumulative sum    
+    # Create output array with only last value of each sequence
+    output = np.zeros_like(arr)
+    output[end_indices] = arr[end_indices]
+    return output
+
 def fit_gev(data):
     """
     Fit a GEV law to a data set 

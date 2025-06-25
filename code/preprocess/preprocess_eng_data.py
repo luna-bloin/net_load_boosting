@@ -3,6 +3,7 @@ sys.path.append("../utils")
 import utils as ut
 import preprocess as pc
 import hydro_storage as hs
+import energy_analysis as ea
 import pandas as pd
 import xarray as xr
 from tqdm import tqdm
@@ -20,7 +21,6 @@ techs = {"PV":"",
          "Wind-power":"",
          "hydro_inflow":"",
          "hydro_ror":"",
-         "weather-insensitive_demand":"",
         }# all technologies considered
 tech_names = ["PV","cooling-demand","heating-demand","Wind_onshore","Wind_offshore","hydro_inflow","hydro_ror"] #naming conventions for data set built here
 generation = ["PV","Wind_onshore","Wind_offshore","hydro_ror"] # variables that generate energy
@@ -32,7 +32,7 @@ out_path = '/net/xenon/climphys/lbloin/energy_boost/' #save location
 if __name__ == "__main__":    
     # === get Clim2Energy converted data sets for historical and SSP370 ===
     print("Opens Clim2Energy output")        
-    for scenario in ut.CESM2_REALIZATION_DICT:
+    for scenario in ["SSP370"]:#ut.CESM2_REALIZATION_DICT:
         print(scenario)
         outputs = []
         # consider currently electrified and future electrified as separate scenarios
@@ -50,6 +50,10 @@ if __name__ == "__main__":
         # === Multiply energy variable output by installed capacity to get output in GWh (for all tech scenarios)
         print("Calculate absolute generation")
         abs_output = outputs["energy_output"] * installed_capacity.GWh
+        # Add weather-insensitive demand
+        ds_demand = pc.open_weather_insensitive_demand(scenario)
+        abs_output = xr.concat([abs_output,ds_demand],dim="technology")
+        # Save
         abs_output.to_dataset(name="eng_vars").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}.nc")
         
         # === Calculate simple net load /without/ hydro inflow storage nor transmission effects === 
@@ -64,7 +68,7 @@ if __name__ == "__main__":
         abs_vars_tech_sum.to_dataset(name="net_load").sum("country").to_netcdf(f"{out_path}net_load_simple_{scenario}.nc")
     
         # === Calculate simple net load /with/ hydro inflow storage effects === 
-        print("Calculate simple net load with hydro storage")
+        print("Calculate net load with hydro storage")
         # calculate hydro_inflow (only keep countries that have hydro inflow)
         hydro_inflow_full = abs_output.sel(technology="hydro_inflow").dropna(dim="country",how="all")
         # open optimized storage from francesco's energy model
@@ -74,11 +78,29 @@ if __name__ == "__main__":
         starting_storage = storage_ds.groupby('time.dayofyear')[1].mean(("member","time")) # mean storage level on January 1st (used as starting point)
         # calculate and save hydro storage effects
         net_load_with_hydro = hs.storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage)
-        net_load_with_hydro.to_dataset(name="net_load").to_netcdf(f"{out_path}net_load_by_country_hydro_storage_{scenario}.nc")
-        net_load_with_hydro.sum("country").to_dataset(name="net_load").to_netcdf(f"{out_path}net_load_hydro_storage_{scenario}.nc")
+        net_load_with_hydro.to_netcdf(f"{out_path}net_load_by_country_hydro_storage_{scenario}.nc")
+        net_load_with_hydro.sum("country").to_netcdf(f"{out_path}net_load_hydro_storage_{scenario}.nc")
         
         # === Calculate net load with transmission effects between countries === 
-        
+        print("Calculate transmission effects")
+        net_load_transmission = []
+        for heating_scenario in net_load_with_hydro.heating_scenario:
+            ds_capac = []
+            for capacity_scenario in net_load_with_hydro.capacity_scenario:
+                ds_mem = []
+                for member in net_load_with_hydro.member:
+                    # create transmission effect calculation framework
+                    analysis = ea.EnergyAnalysis(net_load_with_hydro.sel(member=member,capacity_scenario=capacity_scenario,heating_scenario=heating_scenario).net_load_adjusted)
+                    #calculate transmission effects
+                    ds_mem.append(ea.get_transmission_effect(analysis).to_xarray())
+                ds_capac.append(xr.concat(ds_mem,dim=pd.Index(net_load_with_hydro.member,name="member")))
+            #do it for all scenarios
+            net_load_transmission.append(xr.concat(ds_capac,dim=pd.Index(net_load_with_hydro.capacity_scenario,name="capacity_scenario")))
+        net_load_transmission = xr.concat(net_load_transmission,dim=pd.Index(net_load_with_hydro.heating_scenario,name="heating_scenario")).rename({"index":"time"})
+        net_load_transmission["time"] = net_load_with_hydro.time # make sure the new data array has the same time dimension
+        #save
+        net_load_transmission.to_dataset(name="net_load").to_netcdf(f"{out_path}net_load_transmission_{scenario}.nc")
+
         
         
         

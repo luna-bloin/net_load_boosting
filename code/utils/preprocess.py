@@ -19,13 +19,12 @@ def read_df_to_xr(file):
     df.columns = pd.to_datetime(df.columns)
     return df.T.to_xarray().to_array(dim="country", name="values").rename({"index":"time"})
     
-def save_eng_var(scenario,variable,extra,daily="_daily"):
+def save_eng_var(scenario,variable,extra):
     """
     Opens the converted Climaet2Energy output for a given variable and scenario.
     :param extra: str used when there are aspects of the variable to open to specify (e.g. heating -> fuly electrified or not?)
-    :param daily: str that specifiies whether to resample the data to daily resolution
     """
-    save_file = f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_{variable}_{scenario}{extra}{daily}.nc"
+    save_file = f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_{variable}_{scenario}{extra}.nc"
     try:
         return xr.open_dataset(glob.glob(save_file[0]))
     except:
@@ -46,9 +45,7 @@ def save_eng_var(scenario,variable,extra,daily="_daily"):
         else:
             ds_all = xr.concat(ds_all,dim="member")
             ds_all["member"] = members
-        ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")
-        if daily == "_daily":
-            ds_all = ds_all.resample(time="1D").sum()
+        ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
         ds_all.to_netcdf(save_file)
         return ds_all.load()
 
@@ -70,33 +67,51 @@ def read_plan4res_excel(file):
     ds['time'] = pd.to_datetime(ds['time'].values)
     return ds
 
+types_of_demand={
+    "IRON":["Aluminium","Metals",'Steel'],
+    "CHEM":['Chemicals'],
+    "PAPER":['Paper'],
+    "FOOD":['Fertilizers','Food'],
+    "exogenous":['Appliances'],
+    "flat":['Datacenters','International aviation','International shipping','Others','Planes','Refineries','Ships'], # types of demand that have no yearly profile
+    "D_RoadCar": ['Freight trains','Passenger trains'], # profile for vehicles that need electricity to run
+    "CarPark": ['Busses','Cars','Trucks','Vans'],# profile for vehicles that need electricity to charge
+}
+
+types_of_demand_UK={
+    "IRON":['Energy_branch'],
+    "CHEM":[],
+    "PAPER":[],
+    "FOOD":[],
+    "exogenous":['Electrical_appliances','Cooking','Cooling_and_Electrical_appliances'],
+    "flat":['Aviation','Non-energy_use','Other_demand','Shipping'], # types of demand that have no yearly profile
+    "D_RoadCar": [ 'Rail'], # profile for vehicles that need electricity to run
+    "CarPark": ['2_wheelers','Busses','Heavy_trucks','Light_trucks','Passenger_cars'],# profile for vehicles that need electricity to charge
+}
+
 def open_demand_profiles():
     # open files
-    in_path = "../inputs/weather-insensitive_load/demand_profiles/"
+    in_path = "../../inputs/weather-insensitive_load/demand_profiles/"
     #get the industry-relevant demand profiles
     files = glob.glob(f"{in_path}HOTMAPS__TD_OUT_D_*.csv") 
-    names = [file[69:-44] for file in files]
+    names = [file[70:-44] for file in files]
     # get exogenous demand
     files.append(f"{in_path}HRE4__TD_OUT_ElectricityExo__20200608T160732__20200401T120000Z__v01.csv") 
     names.append("exogenous")
     # get mobility demand
     files_mob = glob.glob(f"{in_path}SIEMENS__TD*.csv")
     files.extend(files_mob)
-    names.extend([(file[67:-44]) for file in files_mob])
+    names.extend([(file[70:-44]) for file in files_mob])
     #open all
     dss = []
     for file in files:
         dss.append(read_plan4res_excel(file))
     dss = xr.concat(dss,dim= pd.Index(names, name="demand_type"))
+    # add a flat profile for demand values that do not change over the year
+    flat = xr.DataArray(data=np.ones((len(dss[0]),1)),dims=["time","demand_type"],coords={"time":dss.time,"demand_type":["flat"]})
+    dss = xr.concat([dss,flat],dim="demand_type")
     # normalize so that values sum up to 1 over a year
     dss_norm = dss/dss.sum("time")
-    # sum up and normalize the two types of car demand
-    car_stuff = ['D_RoadCar','CarPark']
-    dss_car = dss_norm.sel(demand_type=car_stuff).sum("demand_type")
-    dss_car = dss_car/dss_car.sum("time")
-    dss_car = dss_car.assign_coords({"demand_type":"Cars"})
-    dss_norm = xr.concat([dss_car,dss_norm.sel(demand_type=~dss_norm['demand_type'].isin(car_stuff))],dim="demand_type")
-    dss_norm['demand_type'] = ['Cars', 'Chemicals', 'Steel', 'Paper', 'Food', 'exogenous'] #rename to match demand scenario
     return dss_norm
 
 def fill_missing_countries_by_equiv(demand_scenarios):
@@ -117,10 +132,25 @@ def fill_missing_countries_by_equiv(demand_scenarios):
         demand_country = demand_country.rename(index={replace_dict[replace_country]:replace_country})
         demand_scenarios = pd.concat([demand_scenarios, demand_country])
     return demand_scenarios
+
+def get_UK_demand(column):
+    if column == 2019:
+        column_here = 2015 #reference historical year is here 2015 and not 2019
+    elif column == "2050.1":
+        column_here = 2050
+    df = pd.read_excel("../../inputs/weather-insensitive_load/220228_Updated_Energy_Demand.xlsx",sheet_name="OUTPUT_ALL",header=0,index_col=0)
+    df_UK = df.loc["UK"]
+    df_UK = df_UK[(df_UK["Scenario"] == "Global Ambition") & ( df_UK["Energy_carrier"] == "Electricity") & (df_UK["Year"]==column_here)]
+    df_UK = df_UK[~df_UK["Sector_viz_platform"].isin(["Heating_cooling"])] #remove heating and cooling
+    dss = []
+    for demand in types_of_demand_UK:
+        dss.append(df_UK[df_UK["Subsector"].isin(types_of_demand_UK[demand])].sum()["Value"])
+    dss = xr.DataArray(data=np.array(dss).reshape(1, len(dss)),dims=["country","demand_type"],coords={"country":["UK"],"demand_type":list(types_of_demand_UK.keys())})
+    return dss
     
 def open_weather_insensitive_demand_values(column):
     #open demand scenarios
-    demand_scenarios = pd.read_excel("../inputs/weather-insensitive_load/Demand_Scenarios_TYNDP_2024_After_Public_Consultation.xlsm",sheet_name="3_DEMAND_OUTPUT",header=1,index_col=1)
+    demand_scenarios = pd.read_excel("../../inputs/weather-insensitive_load/Demand_Scenarios_TYNDP_2024_After_Public_Consultation.xlsm",sheet_name="3_DEMAND_OUTPUT",header=1,index_col=1)
     demand_scenarios = demand_scenarios[["SUBSECTOR","ENERGY_CARRIER","ENERGY_TYPE",column]]
     demand_scenarios = demand_scenarios[demand_scenarios["ENERGY_CARRIER"] == "Electricity"] #we only care about electricity demand
     demand_scenarios = demand_scenarios[demand_scenarios["ENERGY_TYPE"] == "Energetic"] # we only care about energetic values
@@ -130,46 +160,48 @@ def open_weather_insensitive_demand_values(column):
     # get missing countries
     demand_scenarios = fill_missing_countries_by_equiv(demand_scenarios)
     # sum up based on demand type
-    subsectors = set(demand_scenarios["SUBSECTOR"].values)
-    # open the subsectors that are differentiated in the demand profiles
-    names = ['Chemicals','Steel', 'Paper', 'Food', 'Cars']
     dss = []
-    for sub in (names):
-        dss.append(demand_scenarios[demand_scenarios["SUBSECTOR"] == sub].drop(["SUBSECTOR"],axis=1).to_xarray())
-    # open the rest and sum them up, this is exogenous demand
-    exog_demand = demand_scenarios[~demand_scenarios['SUBSECTOR'].isin(names)]
-    dss.append(exog_demand.groupby(level='COUNTRY').sum().drop(["SUBSECTOR"],axis=1).to_xarray())
-    names.append("exogenous")
-    dss = xr.concat(dss,dim=pd.Index(names,name="demand_type"))
+    for demand in types_of_demand:
+        dss.append(demand_scenarios[demand_scenarios["SUBSECTOR"].isin(types_of_demand[demand])].groupby(level='COUNTRY').sum().drop(["SUBSECTOR"],axis=1).to_xarray())
+    dss = xr.concat(dss,dim=pd.Index(list(types_of_demand.keys()),name="demand_type"))
+    dss=dss.rename({"COUNTRY":"country"})[column]
+    # add UK (only available in 2022 TYNDP)
+    ds_UK = get_UK_demand(column)
+    dss = xr.concat([ds_UK,dss],dim="country")
     #get output in GWh
     dss = dss*1000
-    dss=dss.rename({column:"GWh","COUNTRY":"country"})
     return dss
 
 def open_weather_insensitive_demand(scenario):
     """
-    Opens normalized weather-insensitive demand profiles (integrates to 1 over a year) from plan4res. Then, absolute values for demand for a given scenario is opened (fromTYNDP).
-    These are then multiplied to get a time series of absolute weather-insensitive demand.
+    Opens normalized weather-insensitive demand profiles (integrates to 1 over a year) from plan4res.
     """
+    ds_demand = []
+    capacs = ["current","future","future_wind_x2","future_wind_x0.5"]
+    for capac in capacs:     
     # get scenario-dependent variables
-    # get value for each scenario
-    if "future" in scenario:
-        column = "2050.1"
-        time_range = ut.get_time_range_noleap(2080,2100)
-    elif scenario == "current":
-        column = 2019
-        time_range = ut.get_time_range_noleap(1995,2015)
-    #open profile and values, multiply them
-    profile = open_demand_profiles()
-    values = open_weather_insensitive_demand_values(column)
-    ds_demand =  values.GWh * profile
-    # create 20-year long xarray dataset with the yearly values copied 20 times
+        if "future" in capac:
+            column = "2050.1"
+        elif capac == "current":
+            column = 2019
+        if scenario == "SSP370":
+            time_range = ut.get_time_range_noleap(2080,2100)
+        elif scenario == "historical":
+            time_range = ut.get_time_range_noleap(1995,2015)
+        #open profile and values, multiply them
+        profile = open_demand_profiles()
+        values = open_weather_insensitive_demand_values(column)
+        ds_demand.append( (values * profile).sum("demand_type").values)
+    # create 20-year long xarray dataset with the yearly values copied 20 times, for each member and heating/capacity scenario
     ds_demand = xr.DataArray(
-        data=np.tile(ds_demand.sum("demand_type").values,20),
-        dims=['country', 'time'],
+        data=np.tile(ds_demand,(3,2,1,1,20)),
+        dims=['member','heating_scenario','capacity_scenario','country', 'time'],
         coords={
-            'country': ds_demand.country,
-            'time': time_range
+            'capacity_scenario': capacs,
+            'country': values.country,
+            'time': time_range,
+            'heating_scenario': ["current_electrified","fully_electrified"],
+            'member':["A","B","C"],
         },
         name='GWh'
     )
@@ -177,6 +209,7 @@ def open_weather_insensitive_demand(scenario):
     ds_demand = ds_demand.sel(country=~ds_demand['country'].isin(["EU",'CY','LU',"MT"]))
     #make countries be spelled out fully, not just country code
     ds_demand["country"] = (ut.country_code_to_country_name(list(ds_demand["country"].values)))
+    ds_demand = ds_demand.expand_dims(technology=['weather-insensitive_demand'])
     return ds_demand
     
 
@@ -195,18 +228,18 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario):
             for onshore in [True, False]:
                 ds_wind = []
                 for turbine in ["E-126_7580","SWT120_3600","SWT142_3150"]: # average over turbine heights
-                    ds_wind.append(save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected",daily="")[tech])
+                    ds_wind.append(save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected")[tech])
                 ds_wind = xr.concat(ds_wind,dim="turbine").mean("turbine")
                 ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
                 eng_vars.append(ds_wind.to_dataset(name="energy_output"))
         elif tech == "heating-demand":
-            ds = save_eng_var(scenario,tech, techs[tech][heat_scenario],daily="")[tech] 
+            ds = save_eng_var(scenario,tech, techs[tech][heat_scenario])[tech] 
             eng_vars.append(ds.to_dataset(name="energy_output"))
         elif tech == "weather-insensitive_demand":
-            ds = open_weather_insensitive_demand()
+            ds = open_weather_insensitive_demand(scenario)
             eng_vars.append(ds.to_dataset(name="energy_output"))
         else:
-            ds = save_eng_var(scenario,tech, techs[tech],daily="")[tech]
+            ds = save_eng_var(scenario,tech, techs[tech])[tech]
             if tech == "hydro_inflow":
                 ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
             elif tech == "hydro_ror":
