@@ -32,7 +32,7 @@ out_path = '/net/xenon/climphys/lbloin/energy_boost/' #save location
 if __name__ == "__main__":    
     # === get Clim2Energy converted data sets for historical and SSP370 ===
     print("Opens Clim2Energy output")        
-    for scenario in ["SSP370"]:#ut.CESM2_REALIZATION_DICT:
+    for scenario in ut.CESM2_REALIZATION_DICT:
         print(scenario)
         outputs = []
         # consider currently electrified and future electrified as separate scenarios

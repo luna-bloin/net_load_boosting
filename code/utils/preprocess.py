@@ -94,7 +94,7 @@ def open_demand_profiles():
     in_path = "../../inputs/weather-insensitive_load/demand_profiles/"
     #get the industry-relevant demand profiles
     files = glob.glob(f"{in_path}HOTMAPS__TD_OUT_D_*.csv") 
-    names = [file[70:-44] for file in files]
+    names = [file[72:-44] for file in files]
     # get exogenous demand
     files.append(f"{in_path}HRE4__TD_OUT_ElectricityExo__20200608T160732__20200401T120000Z__v01.csv") 
     names.append("exogenous")
