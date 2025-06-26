@@ -132,7 +132,7 @@ def calculate_storage_net_load(inflow_t, net_load_t, storage_t_minus_1, net_load
     return storage_out,net_load_out
 
 
-def calculate_storage_net_load_country(net_load, hydro_inflow,storage_roll,storage_max,starting_storage,qu,max_capac):
+def calculate_storage_net_load_country(net_load, hydro_inflow,storage_roll,storage_max,starting_storage,net_load_thresh_country,max_capac):
     """
     Calculates the storage effects for all countries.
     """
@@ -145,7 +145,7 @@ def calculate_storage_net_load_country(net_load, hydro_inflow,storage_roll,stora
             #select other country-specific variables
             hif_country = hydro_inflow.sel(country=country)
             hif_country = hif_country.where(hif_country >0, 0).values
-            net_load_thresh_country = qu.sel(country=country).item()
+            #net_load_thresh_country = qu.sel(country=country).item()
             capacity_thresh_country = max_capac.sel(country=country).item()
             storage_thresh_country = storage_roll.sel(country=country).groupby("time.dayofyear")
             storage_thresh_mean = storage_thresh_country.mean().values
@@ -192,14 +192,14 @@ def storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_
         for heat_scenario in techs["heating-demand"]:
             adjusted_net_load_mem = []
             # 75th quantile, used as the threshold for when hydro storage is needed
-            qu = abs_vars_tech_sum.sel(capacity_scenario=capacity_scenario,heating_scenario=heat_scenario).quantile(0.75,dim=("member","time"))
+            #qu = abs_vars_tech_sum.sel(capacity_scenario=capacity_scenario,heating_scenario=heat_scenario).quantile(0.75,dim=("member","time"))
             for member in abs_vars_tech_sum.member.values:
                 #select specific realization of net load and inflow datasets
                 net_load_specific = abs_vars_tech_sum.sel(capacity_scenario=capacity_scenario,member=member,heating_scenario=heat_scenario)
                 hydro_inflow = hydro_inflow_full.sel(capacity_scenario=capacity_scenario,member=member,heating_scenario=heat_scenario)
                 max_capac = get_hydro_capac(hydro_inflow.country.values).max_capac
                 # calculate adjusted net load and storage
-                adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,qu,max_capac)
+                adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,0,max_capac)
                 adjusted_net_load_mem.append(adjusted_net_load)
             adjusted_net_load_heat_scenario.append(xr.concat(adjusted_net_load_mem,dim=pd.Index(abs_vars_tech_sum.member.values, name="member")))
         adjusted_net_load_capac.append(xr.concat(adjusted_net_load_heat_scenario,dim=pd.Index(list(techs["heating-demand"].keys()), name="heating_scenario")))
