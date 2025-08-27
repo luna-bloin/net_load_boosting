@@ -5,11 +5,15 @@ from tqdm import tqdm
 import glob
 import numpy as np
 import cftime
-
+import os
 
 # ===============================================
 # === open converted data from climate2energy ===
 # ===============================================
+
+def get_relative_path(current_path):
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(this_dir, current_path)
 
 def read_df_to_xr(file):
     """
@@ -91,17 +95,17 @@ types_of_demand_UK={
 
 def open_demand_profiles():
     # open files
-    in_path = "../../inputs/weather-insensitive_load/demand_profiles/"
+    in_path = get_relative_path("../../inputs/weather-insensitive_load/demand_profiles/")
     #get the industry-relevant demand profiles
     files = glob.glob(f"{in_path}HOTMAPS__TD_OUT_D_*.csv") 
-    names = [file[72:-44] for file in files]
+    names = [os.path.basename(f)[18:-44] for f in files]
     # get exogenous demand
     files.append(f"{in_path}HRE4__TD_OUT_ElectricityExo__20200608T160732__20200401T120000Z__v01.csv") 
     names.append("exogenous")
     # get mobility demand
     files_mob = glob.glob(f"{in_path}SIEMENS__TD*.csv")
     files.extend(files_mob)
-    names.extend([(file[70:-44]) for file in files_mob])
+    names.extend([(os.path.basename(f)[16:-44]) for f in files_mob])
     #open all
     dss = []
     for file in files:
@@ -138,7 +142,7 @@ def get_UK_demand(column):
         column_here = 2015 #reference historical year is here 2015 and not 2019
     elif column == "2050.1":
         column_here = 2050
-    df = pd.read_excel("../../inputs/weather-insensitive_load/220228_Updated_Energy_Demand.xlsx",sheet_name="OUTPUT_ALL",header=0,index_col=0)
+    df = pd.read_excel(get_relative_path("../../inputs/weather-insensitive_load/220228_Updated_Energy_Demand.xlsx"),sheet_name="OUTPUT_ALL",header=0,index_col=0)
     df_UK = df.loc["UK"]
     df_UK = df_UK[(df_UK["Scenario"] == "Global Ambition") & ( df_UK["Energy_carrier"] == "Electricity") & (df_UK["Year"]==column_here)]
     df_UK = df_UK[~df_UK["Sector_viz_platform"].isin(["Heating_cooling"])] #remove heating and cooling
@@ -150,7 +154,7 @@ def get_UK_demand(column):
     
 def open_weather_insensitive_demand_values(column):
     #open demand scenarios
-    demand_scenarios = pd.read_excel("../../inputs/weather-insensitive_load/Demand_Scenarios_TYNDP_2024_After_Public_Consultation.xlsm",sheet_name="3_DEMAND_OUTPUT",header=1,index_col=1)
+    demand_scenarios = pd.read_excel(get_relative_path("../../inputs/weather-insensitive_load/Demand_Scenarios_TYNDP_2024_After_Public_Consultation.xlsm"),sheet_name="3_DEMAND_OUTPUT",header=1,index_col=1)
     demand_scenarios = demand_scenarios[["SUBSECTOR","ENERGY_CARRIER","ENERGY_TYPE",column]]
     demand_scenarios = demand_scenarios[demand_scenarios["ENERGY_CARRIER"] == "Electricity"] #we only care about electricity demand
     demand_scenarios = demand_scenarios[demand_scenarios["ENERGY_TYPE"] == "Energetic"] # we only care about energetic values
@@ -276,7 +280,7 @@ def read_future_capacity(country,var,cap_type="future_high"):
     """
     var_to_sheet_nb = {"Solar":"61","Wind Onshore":"62","Wind Offshore": "63"}
     sheet_name = var_to_sheet_nb[var]
-    df=pd.read_excel("../../inputs/future_capacity.xlsx",sheet_name=sheet_name,index_col=1,skiprows=[0,1])
+    df=pd.read_excel(get_relative_path("../../inputs/future_capacity.xlsx"),sheet_name=sheet_name,index_col=1,skiprows=[0,1])
     df =df[0:-3] # to avoid including total numbers
     if "high" in cap_type:
         return df[df.index.astype(str).str.contains(country)]["2050.1"].sum()/1000
@@ -287,7 +291,7 @@ def read_current_capacity(country,var):
     """
     reads the current technology capacity, according to ENTSO-E power stats for a given country and var
     """
-    df = pd.read_csv("../../inputs/net_generation_capacity_2024.csv",delimiter='\t',index_col=0)
+    df = pd.read_csv(get_relative_path("../../inputs/net_generation_capacity_2024.csv"),delimiter='\t',index_col=0)
     df_country = df[df["Country"] == country] # find data for selected country
     obs = df_country[df_country["Category"] == var]["ProvidedValue"]
     if len(obs) > 0:
