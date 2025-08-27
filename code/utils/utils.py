@@ -14,6 +14,54 @@ CESM2_REALIZATION_DICT = {
     "SSP370": {"A": "1500", "B": "0600", "C": "0900"},
 }
 
+scen_config_dict = {
+    "current": "Historical system",
+    "future": "Net zero system",
+    "future_wind_x2": "High wind"+", "+"Net zero system",
+    "future_wind_x0.5": "High solar"+", "+"Net zero system",
+    "current_electrified": "Mixed heating",
+    "fully_electrified": "Electric heating",
+    "historical": "Historical climate",
+    "SSP370": "End-of-century climate",
+}
+
+generation_dict = {
+    "PV":"PV", 
+    "Wind_onshore": "Onshore wind",
+    "Wind_offshore":"Offshore wind",
+    "hydro_ror":"Run-of-river hydropower",
+    "hydro_inflow":"Reservoir hydropower"
+}
+demand_dict = {
+    "heating-demand":"Heating demand",
+    "cooling-demand":"Cooling demand",
+    "weather-insensitive_demand":"Weather-insensitive"+"\n"+"demand"
+}
+
+generation_dict_line_break = {
+    "PV":"PV", 
+    "Wind_onshore": "Onshore"+"\n"+"Wind",
+    "Wind_offshore":"Offshore"+"\n"+"Wind",
+    "hydro_ror":"Run-of-river"+"\n"+"Hydropower",
+    "hydro_inflow":"Reservoir"+"\n"+"Hydropower"
+}
+demand_dict_line_break = {
+    "heating-demand":"Heating"+"\n"+"Demand",
+    "cooling-demand":"Cooling"+"\n"+"Demand",
+    "weather-insensitive_demand":"Weather-insensitive"+"\n"+"Demand"
+}
+
+scen_config_dict_line_break = {
+    "current": "Historical system",
+    "future": "Net zero system",
+    "future_wind_x2": "High wind"+"\n"+"Net zero system",
+    "future_wind_x0.5": "High solar"+"\n"+"Net zero system",
+    "current_electrified": "Mixed heating",
+    "fully_electrified": "Electric heating",
+    "historical": "Historical climate",
+    "SSP370": "End-of-century climate",
+}
+
 def doy_to_noleap_datetime(year, doy, hour):
     # Create a DatetimeNoLeap object, starting from Jan 1 and adding DOY offset
     dt_noleap = cftime.DatetimeNoLeap(year, 1, 1, hour) + pd.Timedelta(days=doy - 1)
@@ -127,12 +175,15 @@ def find_longest_islands(arr):
     # Find change points (start and end of 1s)
     nonzero_mask = arr != 0
     change_points = np.diff(np.concatenate(([0], nonzero_mask, [0])))
-    start_indices = np.where(change_points == 1)[0]  # Start of each cumulative sum
-    end_indices = np.where(change_points == -1)[0] - 1  # End of each cumulative sum    
+    start_indices = np.where(change_points == 1)[0]
+    end_indices = np.where(change_points == -1)[0] - 1
+    # Compute durations
+    durations = np.zeros_like(arr)
+    durations[end_indices] = end_indices - start_indices + 1
     # Create output array with only last value of each sequence
     output = np.zeros_like(arr)
     output[end_indices] = arr[end_indices]
-    return output
+    return output,durations
 
 def fit_gev(data):
     """
@@ -195,3 +246,17 @@ def get_time_range_noleap(start_year,end_year):
     # Generate hourly time range
     start = cftime.DatetimeNoLeap(start_year, 1, 1, 0)
     return np.array([start + datetime.timedelta(hours=i) for i in range(n_hours)])
+
+def get_smoothed_doy(doy,roll):
+    doy_year_before = doy.copy()
+    doy_year_before["dayofyear"] = doy["dayofyear"].values - 365
+    doy_year_after = doy.copy()
+    doy_year_after["dayofyear"] = doy["dayofyear"].values + 365
+    return xr.concat([doy_year_before,doy, doy_year_after],dim="dayofyear").rolling(dayofyear=roll,center=True).mean().sel(dayofyear=slice(1,365))
+
+def get_minmax(data):
+    min_local = data.min()
+    max_local=data.max()
+    max_local= np.max([np.abs(min_local),np.abs(max_local)])
+    min_local = -max_local
+    return min_local,max_local
