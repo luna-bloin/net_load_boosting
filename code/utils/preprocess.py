@@ -23,48 +23,144 @@ def read_df_to_xr(file):
     df.columns = pd.to_datetime(df.columns)
     return df.T.to_xarray().to_array(dim="country", name="values").rename({"index":"time"})
     
-def save_eng_var(scenario,variable,extra):
+def save_eng_var(scenario,variable,extra,boost,boost_realization):
     """
     Opens the converted Climaet2Energy output for a given variable and scenario.
-    :param extra: str used when there are aspects of the variable to open to specify (e.g. heating -> fuly electrified or not?)
+    :param extra: str used when there are aspects of the variable to open to specify (e.g. heating -> fully electrified or not?)
     """
-    save_file = f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_{variable}_{scenario}{extra}.nc"
-    try:
-        return xr.open_dataset(glob.glob(save_file[0]))
-    except:
-        members = list(ut.CESM2_REALIZATION_DICT[scenario].keys())
-        ds_all = []
-        for mem in members:
-            path = f"/net/xenon/climphys/lbloin/CESM2energy/output/bias_correction/{mem}/{scenario}/{mem}/output_variables/"
-            if extra == "":
-                files = sorted(glob.glob(f"{path}{variable}_[0-9][0-9][0-9][0-9].csv"))
+    if len(boost) == 0:
+        save_file = f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_{variable}_{scenario}{extra}.nc"
+        try:
+            return xr.open_dataset(glob.glob(save_file[0]))
+        except:
+            members = list(ut.CESM2_REALIZATION_DICT[scenario].keys())
+            ds_all = []
+            for mem in members:
+                path = f"/net/xenon/climphys/lbloin/CESM2energy/output/bias_correction/{mem}/{scenario}/{mem}/output_variables/"
+                if extra == "":
+                    files = sorted(glob.glob(f"{path}{variable}_[0-9][0-9][0-9][0-9].csv"))
+                else:
+                    files = sorted(glob.glob(f"{path}{variable}_*{extra}.csv"))
+                dss = []
+                for file in files:
+                    dss.append(read_df_to_xr(file))
+                ds_all.append(xr.concat(dss,dim="time"))
+            if scenario == "SSP245":
+                ds_all = ds_all[0] #only one member
             else:
-                files = sorted(glob.glob(f"{path}{variable}_*{extra}.csv"))
+                ds_all = xr.concat(ds_all,dim="member")
+                ds_all["member"] = members
+            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
+            ds_all.to_netcdf(save_file)
+            return ds_all.load()
+    else:
+        save_file = f"/net/xenon/climphys/lbloin/energy_boost/country_avgd_{variable}_{scenario}{extra}_boost_{boost_realization}_{boost}.nc"
+        try:
+            return xr.open_dataset(glob.glob(save_file[0]))
+        except:
+            path = f"/net/xenon/climphys/lbloin/CESM2energy/output/boost/{boost_realization}/output_variables/"
+            if extra == "":
+                files = sorted(glob.glob(f"{path}{variable}_boost_{boost}_ens[0-9][0-9][0-9].csv"))
+            else:
+                files = sorted(glob.glob(f"{path}{variable}_boost_{boost}_ens*{extra}.csv"))
             dss = []
             for file in files:
                 dss.append(read_df_to_xr(file))
-            ds_all.append(xr.concat(dss,dim="time"))
-        if scenario == "SSP245":
-            ds_all = ds_all[0] #only one member
-        else:
-            ds_all = xr.concat(ds_all,dim="member")
-            ds_all["member"] = members
-        ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
-        ds_all.to_netcdf(save_file)
-        return ds_all.load()
+                ds_all = xr.concat(dss,dim="member")
+                ds_all["member"] = list(range(1,len(ds_all.member)+1))
+            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
+            ds_all.to_netcdf(save_file)
+            return ds_all.load()
 
-def save_spatial_data(variable,scenario):
-    save_file = f"/net/xenon/climphys/lbloin/energy_boost/CF_{variable}_{scenario}.nc"
-    if glob.glob(save_file) == []:
-        members = list(ut.CESM2_REALIZATION_DICT[scenario].keys())
-        ds_all = []
-        for mem in members:
-            path = f"/net/xenon/climphys/lbloin/CESM2energy/output/bias_correction/{mem}/{scenario}/{mem}/output_variables/"
-            files = sorted(glob.glob(f"{path}{variable}*.nc"))
-            ds_all.append(xr.open_mfdataset(files))
-        ds_all = xr.concat(ds_all,dim="member")
-        ds_all.to_netcdf(save_file)
-    return None
+def save_spatial_data(variable,scenario,boost,boost_realization):
+    if len(boost) == 0:
+        save_file = f"/net/xenon/climphys/lbloin/energy_boost/CF_{variable}_{scenario}.nc"
+        if glob.glob(save_file) == []:
+            members = list(ut.CESM2_REALIZATION_DICT[scenario].keys())
+            ds_all = []
+            for mem in members:
+                path = f"/net/xenon/climphys/lbloin/CESM2energy/output/bias_correction/{mem}/{scenario}/{mem}/output_variables/"
+                files = sorted(glob.glob(f"{path}{variable}*.nc"))
+                ds_all.append(xr.open_mfdataset(files,concat_dim="member", combine="nested"))
+            ds_all = xr.concat(ds_all,dim="member")
+            ds_all.to_netcdf(save_file)
+        return None
+    else:
+        save_file = f"/net/xenon/climphys/lbloin/energy_boost/CF_{variable}_{scenario}_boost_{boost_realization}_{boost}.nc"
+        if glob.glob(save_file) == []:
+            path = f"/net/xenon/climphys/lbloin/CESM2energy/output/boost/{boost_realization}/output_variables/"
+            files = sorted(glob.glob(f"{path}{variable}_boost_{boost}*.nc"))
+            ds_all = xr.open_mfdataset(files,concat_dim="member", combine="nested")
+            ds_all["member"] = list(range(1,len(ds_all.member)+1))
+            ds_all.to_netcdf(save_file)
+        return None
+
+
+def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realization):
+    eng_vars = []
+    # open data for all technologies considered
+    for tech in tqdm(techs):
+        print(tech)
+        if tech == "Wind-power" or tech == "PV":
+            # open spatial CFs and save them for available techs
+            save_spatial_data(tech,scenario,boost,boost_realization)
+        # open and save tech output from climate2energy
+        if tech == "Wind-power":
+            for onshore in [True, False]:
+                ds_wind = []
+                for turbine in ["E-126_7580","SWT120_3600","SWT142_3150"]: # average over turbine heights
+                    ds_wind.append(save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected",boost,boost_realization)[tech])
+                ds_wind = xr.concat(ds_wind,dim="turbine").mean("turbine")
+                ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
+                eng_vars.append(ds_wind.to_dataset(name="energy_output"))
+        elif tech == "heating-demand":
+            ds = save_eng_var(scenario, tech, techs[tech][heat_scenario],boost,boost_realization)[tech] 
+            eng_vars.append(ds.to_dataset(name="energy_output"))
+        elif tech == "weather-insensitive_demand":
+            ds = open_weather_insensitive_demand(scenario)
+            eng_vars.append(ds.to_dataset(name="energy_output"))
+        else:
+            ds = save_eng_var(scenario,tech, techs[tech],boost,boost_realization)[tech]
+            if tech == "hydro_inflow":
+                ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
+            elif tech == "hydro_ror":
+                ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
+            eng_vars.append(ds.to_dataset(name="energy_output"))
+    return eng_vars
+
+def preproc_cesm_z500(scenario,member):
+    """
+    opens the non bias corrected daily Z500 data for a given scenario and member
+    """
+    realization = ut.CESM2_REALIZATION_DICT[scenario][member]
+    # historical is called HIST in the file system
+    if scenario == "historical":
+        scen_file = "HIST"
+    else:
+        scen_file = scenario
+    # open and concat all years in time range
+    z500s = []
+    for year in tqdm(ut.get_time_range(scenario)):
+        file = f"/net/meso/climphys/cesm212/b.e212.B{scen_file}cmip6.f09_g17.{realization}/archive/atm/hist/b.e212.B{scen_file}cmip6.f09_g17.{realization}.cam.h1.{year}-01-01-00000.nc"
+        z500s.append(ut.select_Europe(ut.zero_mean_longitudes(xr.open_dataset(file))))
+    return xr.concat(z500s,dim="time")
+
+def preproc_cesm_z500_boosted(scenario,member,boost_date):
+    """
+    opens the non bias corrected daily Z500 data for a given boosted case
+    """
+    def preproc(ds):
+        return ut.select_Europe(ut.zero_mean_longitudes(ds))
+    realization = ut.CESM2_REALIZATION_DICT[scenario][member]
+    # open and concat all years in time range
+    files = glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scenario}cmip6.000{realization}.{boost_date}.ens*/atm/hist/B{scenario}cmip6.000{realization}.{boost_date}.ens*.cam.h1.*.nc")
+    z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")
+    z500["member"] = list(range(1,len(z500.member)+1))
+    return z500
+
+# =========================================
+# === Create weather-insensitive demand ===
+# =========================================
 
 def read_plan4res_excel(file):
     ds = pd.read_csv(file,delimiter=";",index_col=0).to_xarray().ALL.rename({"Timestamp [UTC]":"time"})
@@ -176,10 +272,14 @@ def open_weather_insensitive_demand_values(column):
     dss = dss*1000
     return dss
 
-def open_weather_insensitive_demand(scenario):
+def open_weather_insensitive_demand(scenario,boost):
     """
     Opens normalized weather-insensitive demand profiles (integrates to 1 over a year) from plan4res.
     """
+    if len(boost)  == 0:
+        members = ["A","B","C"]
+    else:
+        members = list(range(1,11))
     ds_demand = []
     capacs = ["current","future","future_wind_x2","future_wind_x0.5"]
     for capac in capacs:     
@@ -198,14 +298,14 @@ def open_weather_insensitive_demand(scenario):
         ds_demand.append( (values * profile).sum("demand_type").values)
     # create 20-year long xarray dataset with the yearly values copied 20 times, for each member and heating/capacity scenario
     ds_demand = xr.DataArray(
-        data=np.tile(ds_demand,(3,2,1,1,20)),
+        data=np.tile(ds_demand,(len(members),2,1,1,20)),
         dims=['member','heating_scenario','capacity_scenario','country', 'time'],
         coords={
             'capacity_scenario': capacs,
             'country': values.country,
             'time': time_range,
             'heating_scenario': ["current_electrified","fully_electrified"],
-            'member':["A","B","C"],
+            'member':members,
         },
         name='GWh'
     )
@@ -215,58 +315,6 @@ def open_weather_insensitive_demand(scenario):
     ds_demand["country"] = (ut.country_code_to_country_name(list(ds_demand["country"].values)))
     ds_demand = ds_demand.expand_dims(technology=['weather-insensitive_demand'])
     return ds_demand
-    
-
-
-
-def concat_all_eng_vars(techs,scenario,out_path,heat_scenario):
-    eng_vars = []
-    # open data for all technologies considered
-    for tech in tqdm(techs):
-        print(tech)
-        if tech == "Wind-power" or tech == "PV":
-            # open spatial CFs and save them for available techs
-            save_spatial_data(tech,scenario)
-        # open and save tech output from climate2energy
-        if tech == "Wind-power":
-            for onshore in [True, False]:
-                ds_wind = []
-                for turbine in ["E-126_7580","SWT120_3600","SWT142_3150"]: # average over turbine heights
-                    ds_wind.append(save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected")[tech])
-                ds_wind = xr.concat(ds_wind,dim="turbine").mean("turbine")
-                ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
-                eng_vars.append(ds_wind.to_dataset(name="energy_output"))
-        elif tech == "heating-demand":
-            ds = save_eng_var(scenario,tech, techs[tech][heat_scenario])[tech] 
-            eng_vars.append(ds.to_dataset(name="energy_output"))
-        elif tech == "weather-insensitive_demand":
-            ds = open_weather_insensitive_demand(scenario)
-            eng_vars.append(ds.to_dataset(name="energy_output"))
-        else:
-            ds = save_eng_var(scenario,tech, techs[tech])[tech]
-            if tech == "hydro_inflow":
-                ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
-            elif tech == "hydro_ror":
-                ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
-            eng_vars.append(ds.to_dataset(name="energy_output"))
-    return eng_vars
-
-def preproc_cesm_z500(scenario,member):
-    """
-    opens the non bias corrected daily Z500 data for a given scenario and member
-    """
-    realization = ut.CESM2_REALIZATION_DICT[scenario][member]
-    # historical is called HIST in the file system
-    if scenario == "historical":
-        scen_file = "HIST"
-    else:
-        scen_file = scenario
-    # open and concat all years in time range
-    z500s = []
-    for year in tqdm(ut.get_time_range(scenario)):
-        file = f"/net/meso/climphys/cesm212/b.e212.B{scen_file}cmip6.f09_g17.{realization}/archive/atm/hist/b.e212.B{scen_file}cmip6.f09_g17.{realization}.cam.h1.{year}-01-01-00000.nc"
-        z500s.append(ut.select_Europe(ut.zero_mean_longitudes(xr.open_dataset(file))))
-    return xr.concat(z500s,dim="time")
 
 # ===============================
 # === Read capacity scenarios ===

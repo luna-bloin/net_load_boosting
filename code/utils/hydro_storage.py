@@ -8,7 +8,7 @@ import datetime
 import glob
 
 
-def open_storage(scenario):
+def open_storage(scenario,boost):
     """
     Opens the storage data set from Francesco's energy model for a given scenario, into the format used in the rest of the project
     Here, all three parallel members (A,B,C) are stacked on top of each other, and each year (60 in total, 3*20 parallel simulations) is called a scenario.
@@ -231,5 +231,5 @@ def get_hydro_capac(countries):
     )
     return ds_hydro_capac
 
-
-
+def get_boosted_start_storage(boost,ds_storage,boost_realization):
+    return ds_storage.sel(time=boost,member=boost_realization).mean("time") #mean over hours in that day

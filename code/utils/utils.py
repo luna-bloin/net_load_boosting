@@ -43,7 +43,8 @@ generation_dict_line_break = {
     "Wind_onshore": "Onshore"+"\n"+"Wind",
     "Wind_offshore":"Offshore"+"\n"+"Wind",
     "hydro_ror":"Run-of-river"+"\n"+"Hydropower",
-    "hydro_inflow":"Reservoir"+"\n"+"Hydropower"
+    "hydro_inflow":"Reservoir"+"\n"+"Hydropower",
+    "hydro_dispatched":"Reservoir"+"\n"+"Hydropower",
 }
 demand_dict_line_break = {
     "heating-demand":"Heating"+"\n"+"Demand",
