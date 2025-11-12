@@ -1,7 +1,7 @@
 inputs/**
 !inputs/.gitkeep
-figs/**
-!figs/.gitkeep
+figs_CC_impacts/**
+!figs_CC_impacts/.gitkeep
 figs_old/**
 !figs_old/.gitkeep
 # Byte-compiled / optimized / DLL files
