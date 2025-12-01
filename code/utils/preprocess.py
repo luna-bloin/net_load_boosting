@@ -111,14 +111,17 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
                 for turbine in ["E-126_7580","SWT120_3600","SWT142_3150"]: # average over turbine heights
                     ds_wind.append(save_eng_var(scenario,tech,f"_{turbine}_onshore_{onshore}_density_corrected",boost,boost_realization)[tech])
                 ds_wind = xr.concat(ds_wind,dim="turbine").mean("turbine")
-                ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
+                if len(boost) > 0:
+                    ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_{boost}_onshore{onshore}.nc")
+                else:
+                    ds_wind.to_dataset(name=f"Wind_onshore{onshore}").to_netcdf(f"{out_path}country_avgd_Wind-power_{scenario}_onshore{onshore}.nc")
                 eng_vars.append(ds_wind.to_dataset(name="energy_output"))
         elif tech == "heating-demand":
             ds = save_eng_var(scenario, tech, techs[tech][heat_scenario],boost,boost_realization)[tech] 
             eng_vars.append(ds.to_dataset(name="energy_output"))
-        elif tech == "weather-insensitive_demand":
-            ds = open_weather_insensitive_demand(scenario)
-            eng_vars.append(ds.to_dataset(name="energy_output"))
+        # elif tech == "weather-insensitive_demand":
+        #     ds = open_weather_insensitive_demand(scenario)
+        #     eng_vars.append(ds.to_dataset(name="energy_output"))
         else:
             ds = save_eng_var(scenario,tech, techs[tech],boost,boost_realization)[tech]
             if tech == "hydro_inflow":
@@ -149,11 +152,16 @@ def preproc_cesm_z500_boosted(scenario,member,boost_date):
     """
     opens the non bias corrected daily Z500 data for a given boosted case
     """
+    # historical is called HIST in the file system
+    if scenario == "historical":
+        scen_file = "HIST"
+    else:
+        scen_file = scenario
     def preproc(ds):
         return ut.select_Europe(ut.zero_mean_longitudes(ds))
     realization = ut.CESM2_REALIZATION_DICT[scenario][member]
     # open and concat all years in time range
-    files = glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scenario}cmip6.000{realization}.{boost_date}.ens*/atm/hist/B{scenario}cmip6.000{realization}.{boost_date}.ens*.cam.h1.*.nc")
+    files = glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h1.*.nc")
     z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")
     z500["member"] = list(range(1,len(z500.member)+1))
     return z500
@@ -272,14 +280,10 @@ def open_weather_insensitive_demand_values(column):
     dss = dss*1000
     return dss
 
-def open_weather_insensitive_demand(scenario,boost):
+def open_weather_insensitive_demand(scenario,boost,members):
     """
     Opens normalized weather-insensitive demand profiles (integrates to 1 over a year) from plan4res.
     """
-    if len(boost)  == 0:
-        members = ["A","B","C"]
-    else:
-        members = list(range(1,11))
     ds_demand = []
     capacs = ["current","future","future_wind_x2","future_wind_x0.5"]
     for capac in capacs:     

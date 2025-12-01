@@ -248,6 +248,17 @@ def get_time_range_noleap(start_year,end_year):
     start = cftime.DatetimeNoLeap(start_year, 1, 1, 0)
     return np.array([start + datetime.timedelta(hours=i) for i in range(n_hours)])
 
+def get_time_plus_delta(start_date,delta):    
+    # Total hours 
+    n_hours = delta * 24
+    
+    # Generate hourly time range
+    start_year = int(start_date[0:4])
+    start_month = int(start_date[5:7])
+    start_day = int(start_date[8:10])
+    start = cftime.DatetimeNoLeap(start_year, start_month, start_day, 0)
+    return slice(start, start + datetime.timedelta(hours=n_hours))
+
 def get_smoothed_doy(doy,roll):
     doy_year_before = doy.copy()
     doy_year_before["dayofyear"] = doy["dayofyear"].values - 365

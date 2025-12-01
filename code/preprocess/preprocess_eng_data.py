@@ -36,7 +36,7 @@ if __name__ == "__main__":
     except:
         boost_realization = "" 
     scenario = sys.argv[3]
-    if boost == False:
+    if len(boost) == 0:
         boost_save = ""
     else:
         boost_save = f"_boost_{boost_realization}_{boost}"
@@ -60,8 +60,14 @@ if __name__ == "__main__":
     print("Calculate absolute generation")
     abs_output = outputs["energy_output"] * installed_capacity.GWh
     # Add weather-insensitive demand
-    ds_demand = pc.open_weather_insensitive_demand(scenario,boost)
+    if len(boost) == 0:
+        members = ["A","B","C"]
+    else:
+        members = list(range(1,len(outputs.member)))
+    ds_demand = pc.open_weather_insensitive_demand(scenario,boost,members)
     abs_output = xr.concat([abs_output,ds_demand],dim="technology")
+    if len(boost) > 0:
+        abs_output = abs_output.sel(time=ut.get_time_plus_delta(boost,64)) # simulations last roughly 60 days
     # Save
     abs_output.to_dataset(name="eng_vars").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}{boost_save}.nc")
     
