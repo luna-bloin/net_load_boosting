@@ -4,6 +4,7 @@ import xarray as xr
 import pandas as pd
 import cftime
 import datetime
+import geopandas as gpd
 from tqdm import tqdm
 from scipy.stats import genextreme as gev
 from numpy.random import default_rng
@@ -38,6 +39,17 @@ demand_dict = {
     "weather-insensitive_demand":"Weather-insensitive"+"\n"+"demand"
 }
 
+tech_dict = {
+    "PV":"PV", 
+    "Wind_onshore": "Onshore wind",
+    "Wind_offshore":"Offshore wind",
+    "hydro_ror":"Run-of-river hydropower",
+    "hydro_inflow":"Reservoir hydropower",
+    "heating-demand":"Heating demand",
+    "cooling-demand":"Cooling demand",
+    "weather-insensitive_demand":"Weather-insensitive"+"\n"+"demand"
+}
+
 generation_dict_line_break = {
     "PV":"PV", 
     "Wind_onshore": "Onshore"+"\n"+"Wind",
@@ -59,8 +71,8 @@ scen_config_dict_line_break = {
     "future_wind_x0.5": "High solar"+"\n"+"Net zero system",
     "current_electrified": "Mixed heating",
     "fully_electrified": "Electric heating",
-    "historical": "Historical climate",
-    "SSP370": "End-of-century climate",
+    "historical": "Historical"+"\n"+"climate",
+    "SSP370": "End-of-century"+"\n"+"climate",
 }
 
 def doy_to_noleap_datetime(year, doy, hour):
@@ -155,6 +167,25 @@ def country_name_to_country_code(keys):
         return country_codes
     else:
         return country_codes[keys]
+
+shapefile_path = "/home/lbloin/Thesis/eng_boost/net_load_boosting/inputs/geopandas/ne_50m_admin_0_countries.shp"
+# Load the shapefile
+world = gpd.read_file(shapefile_path)
+# Filter for Europe
+europe = world[world['CONTINENT'] == 'Europe']
+
+def country_to_region(country,europe):
+    subregion = europe[europe["NAME_LONG"]==country]["SUBREGION"].item()
+    return subregion
+
+def get_region_mean(ds):
+    region = xr.DataArray(
+        [country_to_region(c,europe) for c in ds.country.values],
+        dims="country",
+        coords={"country": ds.country},
+        name="region"
+    )
+    return ds.groupby(region).mean("country")
 
 def find_islands(da, threshold):
     """
@@ -266,9 +297,44 @@ def get_smoothed_doy(doy,roll):
     doy_year_after["dayofyear"] = doy["dayofyear"].values + 365
     return xr.concat([doy_year_before,doy, doy_year_after],dim="dayofyear").rolling(dayofyear=roll,center=True).mean().sel(dayofyear=slice(1,365))
 
+def get_smoothed_hoy(hoy,roll):
+    hoy_year_before = hoy.copy()
+    hoy_year_before["hourofyear"] = hoy["hourofyear"].values - 8760
+    hoy_year_after = hoy.copy()
+    hoy_year_after["hourofyear"] = hoy["hourofyear"].values + 8760
+    return xr.concat([hoy_year_before,hoy, hoy_year_after],dim="hourofyear").rolling(hourofyear=roll,center=True).mean().sel(hourofyear=slice(0,8759))
+
 def get_minmax(data):
     min_local = data.min()
     max_local=data.max()
     max_local= np.max([np.abs(min_local),np.abs(max_local)])
     min_local = -max_local
     return min_local,max_local
+
+def multi_to_single_index(ds,dims=("case","lead_time"),new_name="lead_ID"):
+    stacked = ds.stack(event=dims)
+    coords = [str(st) for st in stacked["event"].values]
+    stacked = stacked.reset_index("event")
+    stacked["event"] = coords
+    stacked = stacked.drop_vars(dims)
+    stacked = stacked.rename({"event":new_name})
+    return stacked
+
+def ds_hoy_in_full_time(ds,typ,dims=("member","time")):
+    """get hour of year values but with time coordinates too"""
+    hour_of_year = xr.DataArray(
+        np.arange(len(ds.time)) % 8760,
+        dims="time",
+        coords={"time": ds.time}
+    )
+    # Add it as a coordinate for easy grouping
+    ds = ds.assign_coords(hourofyear=hour_of_year)
+    # mean or std
+    if typ =="mn":
+        flattened = ds.groupby("hourofyear").mean(dims)
+    elif typ =="std":
+        flattened = ds.groupby("hourofyear").std(dims)
+    flattened = get_smoothed_hoy(flattened,24*7)
+    time = ds.time
+    hoy = time.hourofyear
+    return flattened.sel(hourofyear=hoy).assign_coords(time=time)
