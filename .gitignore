@@ -4,6 +4,8 @@ figs_CC_impacts/**
 !figs_CC_impacts/.gitkeep
 figs_old/**
 !figs_old/.gitkeep
+figs_tryout/**
+!figs_tryout/.gitkeep
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
