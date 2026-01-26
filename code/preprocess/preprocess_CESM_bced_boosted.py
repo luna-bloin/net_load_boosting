@@ -28,8 +28,9 @@ if __name__ == "__main__":
     # === atmospheric variables: temperature, global horizontal, wind speed (s_hub) ===
     dss = []
     for var in atm_vars:
+        print(var)
         files = glob.glob(f"{in_path}/atmospheric_variables/bced_{var}_boost_{boost_date}_ens*.nc")
-        ds_mem = xr.open_mfdataset(files,concat_dim="member", combine="nested")[atm_vars[var]].convert_calendar("noleap")
+        ds_mem = xr.open_mfdataset(files,concat_dim="member", combine="nested")[atm_vars[var]].convert_calendar("noleap").resample(time="1D").mean()
         ds_mem["member"] = range(1,len(ds_mem.member)+1)
         dss.append(ds_mem)        
     dss = xr.Dataset({da.name: da for da in dss})

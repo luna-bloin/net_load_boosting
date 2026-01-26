@@ -26,8 +26,9 @@ for scenario in ut.CESM2_REALIZATION_DICT:
     for var in atm_vars:
         ds_mem = []
         for mem in members:
-            ds_mem.append(xr.open_mfdataset(f"{in_path}{mem}/{scenario}/{mem}/atmospheric_variables/bced_CESM2_{var}_*.nc")[atm_vars[var]].convert_calendar("noleap"))
-        dss.append(xr.concat(ds_mem,pd.Index(members, name="member")))        
+            ds_mem.append(xr.open_mfdataset(f"{in_path}{mem}/{scenario}/{mem}/atmospheric_variables/bced_CESM2_{var}_*.nc")[atm_vars[var]].convert_calendar("noleap").resample(time="1D").mean())
+        dss.append(xr.concat(ds_mem,pd.Index(members, name="member"))) 
+    dss = xr.Dataset({da.name: da for da in dss})
     dss.to_netcdf(f"{out_path}bced_atm_vars_{scenario}.nc")
     
     # === river discharge (different grid, so needs to be in a separate file ===
