@@ -68,7 +68,7 @@ def save_eng_var(scenario,variable,extra,boost,boost_realization):
                 dss.append(read_df_to_xr(file))
                 ds_all = xr.concat(dss,dim="member")
                 ds_all["member"] = list(range(1,len(ds_all.member)+1))
-            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
+            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap").sel(time=slice(boost,None)) # make sure that you keep only the dates after boosting (files are concat with parents for clim2energy reasons, not necessary here)        
             ds_all.to_netcdf(save_file)
             return ds_all.load()
 
@@ -161,7 +161,7 @@ def preproc_cesm_z500_boosted(scenario,member,boost_date):
         return ut.select_Europe(ut.zero_mean_longitudes(ds))
     realization = ut.CESM2_REALIZATION_DICT[scenario][member]
     # open and concat all years in time range
-    files = glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h1.*.nc")
+    files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h1.*.nc"))
     z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")
     z500["member"] = list(range(1,len(z500.member)+1))
     return z500
