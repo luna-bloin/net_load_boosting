@@ -63,7 +63,7 @@ if __name__ == "__main__":
     if len(boost) == 0:
         members = ["A","B","C"]
     else:
-        members = list(range(1,len(outputs.member)))
+        members = list(range(1,len(outputs.member)+1))
     ds_demand = pc.open_weather_insensitive_demand(scenario,boost,members)
     abs_output = xr.concat([abs_output,ds_demand],dim="technology")
     if len(boost) > 0:
