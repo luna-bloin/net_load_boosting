@@ -256,7 +256,7 @@ def get_time_range(scenario):
     return range_dict[scenario]
 
 def select_Europe(ds):
-    return ds.sel(lon=slice(-15, 50), lat=slice(30, 75))
+    return ds.sel(lon=slice(-25, 35), lat=slice(30, 75))
 
 def zero_mean_longitudes(ds):
     """
@@ -338,3 +338,6 @@ def ds_hoy_in_full_time(ds,typ,dims=("member","time")):
     time = ds.time
     hoy = time.hourofyear
     return flattened.sel(hourofyear=hoy).assign_coords(time=time)
+
+def str_to_cftime_noleap(string):
+    return cftime.DatetimeNoLeap(int(string[0:4]), int(string[5:7]), int(string[8:10]))

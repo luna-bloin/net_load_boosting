@@ -6,6 +6,8 @@ import glob
 import numpy as np
 import cftime
 import os
+from datetime import timedelta
+import cftime
 
 # ===============================================
 # === open converted data from climate2energy ===
@@ -119,14 +121,25 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
         elif tech == "heating-demand":
             ds = save_eng_var(scenario, tech, techs[tech][heat_scenario],boost,boost_realization)[tech] 
             eng_vars.append(ds.to_dataset(name="energy_output"))
-        # elif tech == "weather-insensitive_demand":
-        #     ds = open_weather_insensitive_demand(scenario)
-        #     eng_vars.append(ds.to_dataset(name="energy_output"))
         else:
             ds = save_eng_var(scenario,tech, techs[tech],boost,boost_realization)[tech]
             if tech == "hydro_inflow":
+                # need to concatenate first data point before boosting (up to a week before) to get seamless data from boosting
+                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_inflow_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds)[tech]
+                first_before_boost = ut.str_to_cftime_noleap(boost)
+                while len(ds_parent.sel(time=str(first_before_boost)[0:10]).time) == 0:
+                    first_before_boost -= timedelta(days=1)
+                ds_parent = ds_parent.sel(time=str(first_before_boost)[0:10])
+                ds = xr.concat([ds_parent,ds],dim="time")
+                
                 ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
+                # remove excess time before boosting to match all other datasets
+                ds = ds.sel(time=slice(boost,None))
             elif tech == "hydro_ror":
+                # need to concatenate first data point to get seamless data from boosting
+                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_ror_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds).sel(time=boost)[tech]
+                ds = xr.concat([ds_parent,ds],dim="time")
+                
                 ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
             eng_vars.append(ds.to_dataset(name="energy_output"))
     return eng_vars
