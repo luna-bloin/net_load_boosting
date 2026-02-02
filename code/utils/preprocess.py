@@ -144,41 +144,6 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
             eng_vars.append(ds.to_dataset(name="energy_output"))
     return eng_vars
 
-def preproc_cesm_z500(scenario,member):
-    """
-    opens the non bias corrected daily Z500 data for a given scenario and member
-    """
-    realization = ut.CESM2_REALIZATION_DICT[scenario][member]
-    # historical is called HIST in the file system
-    if scenario == "historical":
-        scen_file = "HIST"
-    else:
-        scen_file = scenario
-    # open and concat all years in time range
-    z500s = []
-    for year in tqdm(ut.get_time_range(scenario)):
-        file = f"/net/meso/climphys/cesm212/b.e212.B{scen_file}cmip6.f09_g17.{realization}/archive/atm/hist/b.e212.B{scen_file}cmip6.f09_g17.{realization}.cam.h1.{year}-01-01-00000.nc"
-        z500s.append(ut.select_Europe(ut.zero_mean_longitudes(xr.open_dataset(file))))
-    return xr.concat(z500s,dim="time")
-
-def preproc_cesm_z500_boosted(scenario,member,boost_date):
-    """
-    opens the non bias corrected daily Z500 data for a given boosted case
-    """
-    # historical is called HIST in the file system
-    if scenario == "historical":
-        scen_file = "HIST"
-    else:
-        scen_file = scenario
-    def preproc(ds):
-        return ut.select_Europe(ut.zero_mean_longitudes(ds))
-    realization = ut.CESM2_REALIZATION_DICT[scenario][member]
-    # open and concat all years in time range
-    files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h1.*.nc"))
-    z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")
-    z500["member"] = list(range(1,len(z500.member)+1))
-    return z500
-
 # =========================================
 # === Create weather-insensitive demand ===
 # =========================================

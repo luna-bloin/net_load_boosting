@@ -15,46 +15,58 @@ from bias_correction import BiasCorrection
 # === Preprocesses CESM2  before climate2energy conversion into nc files: TREFHT, FSDS, S100 and discharge are already bias corrected by the tool, and this data is read. For Z500, bias correction is also applied. ===
 # ======================================================================================================================================================================================================================
 
+# =======================================================================================================================================================================================================================
+# === Preprocesses CESM2 atmospheric data into maps over Europe: for TREFHT, FSDS, S100, Z500, bias correction using ERA5 is applied. For discharge, the already bias corrected data from climate2energy is retrieved ===
+# =======================================================================================================================================================================================================================
 
+# =============
+# === paths ===
+# =============
+
+in_path_discharge = "/net/xenon/climphys/lbloin/CESM2energy/output/boost/"
 out_path = "/net/xenon/climphys/lbloin/energy_boost/"
-atm_vars = {"temperature":"temperature", "global-horizontal":"global_horizontal","s100":"s_hub"}
 
-if __name__ == "__main__":    
-    boost_date = sys.argv[1] #date of boosting
-    realization = sys.argv[2]
-    scenario = sys.argv[3]
-    in_path = f"/net/xenon/climphys/lbloin/CESM2energy/output/boost/{realization}/"
-    
-    # === atmospheric variables: temperature, global horizontal, wind speed (s_hub) ===
-    dss = []
-    for var in atm_vars:
-        print(var)
-        files = glob.glob(f"{in_path}/atmospheric_variables/bced_{var}_boost_{boost_date}_ens*.nc")
-        ds_mem = xr.open_mfdataset(files,concat_dim="member", combine="nested")[atm_vars[var]].convert_calendar("noleap").resample(time="1D").mean()
-        ds_mem["member"] = range(1,len(ds_mem.member)+1)
-        dss.append(ds_mem)        
-    dss = xr.Dataset({da.name: da for da in dss})
-    dss.to_netcdf(f"{out_path}bced_atm_vars_boost_{realization}_{boost_date}.nc")
-    
-    # === river discharge (different grid, so needs to be in a separate file ===
-    ds_mem = []
-    files = glob.glob(f"{in_path}/atmospheric_variables/bced_discharge_boost_{boost_date}_ens*.nc")
-    ds_discharge=xr.open_mfdataset(files,concat_dim="member", combine="nested")["discharge"].convert_calendar("noleap")
-    ds_discharge["member"] = range(1,len(ds_discharge.member)+1)
-    ds_discharge.to_netcdf(f"{out_path}bced_discharge_boost_{realization}_{boost_date}.nc")
+boost_date = sys.argv[1] #date of boosting
+realization = sys.argv[2]
+scenario = sys.argv[3]
 
-    # === Z500 ===
-    # Get ERA5 data
-    path = f"{out_path}Raw_ERA5_z500.nc"
-    if glob.glob(path) == []:
-        subprocess.run(["bash", f"preprocess/preprocess_Z500_ERA5.sh"])
-    z500_ERA5 = xr.open_dataset(path).resample(time="1D").mean().convert_calendar("noleap").drop_vars("level")
+# =================
+# === Discharge ===
+# =================
 
-    # get boosted z500 data, and bias correct it with ERA5
-    # Bias correction is done AA, BB, CC (cesm model realization used for bias correction is the same as the data that is corrected)
-    # open raw historical and ssp370 z500
-    hist_z500 = pc.preproc_cesm_z500("historical",realization)
-    boosted_z500 = pc.preproc_cesm_z500_boosted(scenario,realization,boost_date)
-    # perform bias correction for each scenario considered (with hist_z500 as the model reference)
-    z500_bc = bc.bias_correct_dataset(boosted_z500.Z500, hist_z500.Z500, z500_ERA5.Z500)
-    z500_bc.to_netcdf(f"{out_path}bced_z500_{scenario}_boost_{realization}_{boost_date}.nc")
+print("getting bias corrected discharge data")
+# === river discharge (different grid, so needs to be in a separate file ===
+ds_mem = []
+files = sorted(glob.glob(f"{in_path_discharge}{realization}/atmospheric_variables/bced_discharge_boost_{boost_date}_ens*.nc"))
+ds_discharge=xr.open_mfdataset(files,concat_dim="member", combine="nested")["discharge"].convert_calendar("noleap")
+ds_discharge["member"] = range(1,len(ds_discharge.member)+1)
+ds_discharge.to_netcdf(f"{out_path}bced_discharge_boost_{realization}_{boost_date}.nc")
+print("Discharge done")
+
+# ===========================
+# === All other variables ===
+# ===========================
+
+atm_vars = {"temperature":"temperature", "global-horizontal":"global_horizontal","s100":"s_hub","Z500":"Z500"}
+
+print("getting atmospheric data")
+for var in atm_vars:
+    print(var)
+    # === Step 1: get ERA5 data for bias correction ===
+    print("Get ERA5 data")
+    era5_file = f"{out_path}Raw_ERA5_{var}.nc"
+    if glob.glob(era5_file) == []:
+        subprocess.run(["bash", f"ERA5_preproc_scripts/preprocess_{var}_ERA5.sh"])
+    ERA5 = xr.open_dataset(era5_file).convert_calendar("noleap")
+    if var =="Z500":
+        ERA5 = ERA5.drop_vars("level")
+    print("ERA5 done")
+    # === Step 2: get boosted data and bias correct it
+    # Bias correction is done AA, BB, CC (cesm2 model realization used for bias correction is the same as the data that is corrected)
+    # open raw boosted and historical
+    hist = pc.preproc_cesm2("historical",realization,out_path,var)
+    boosted = pc.preproc_cesm2_boosted(boost_date,scenario,realization,out_path,var)
+    # perform bias correction and save
+    bc_ds = bc.bias_correct_dataset(boosted[atm_vars[var]], hist[atm_vars[var]], ERA5[atm_vars[var]])
+    bc_ds.to_netcdf(f"{out_path}bced_{var}_{scenario}_boost_{realization}_{boost_date}.nc")
+print("atmospheric data done")
