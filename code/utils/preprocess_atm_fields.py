@@ -96,7 +96,7 @@ def preproc_atm_vars(scenario,member,path,boost_date=""):
         def preproc_boost(ds):
             return ut.select_Europe(ut.zero_mean_longitudes(ds.isel(lev=slice(29, 32), ilev=slice(29, 33)))).resample(time="1D").mean()
         files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h6.*.nc"))
-        ds_atm = xr.open_mfdataset(file,preprocess=preproc_boost,concat_dim="member", combine="nested")
+        ds_atm = xr.open_mfdataset(files,preprocess=preproc_boost,concat_dim="member", combine="nested")
         ds_atm["member"] = list(range(1,len(ds_atm.member)+1))
     # Wind
     ds_wind = ds_atm.isel(lev=slice(-2, None))  # lowermost 2 levels
@@ -145,5 +145,5 @@ def preproc_cesm2(scenario,member,path,var):
 def preproc_cesm2_boosted(boost_date,scenario,parent_member,path,var):
     file = f"{path}Raw_CESM2_{var}_{scenario}_boost_{parent_member}_{boost_date}.nc"
     if len(glob.glob(file)) ==0:
-        preproc_atm_vars(scenario,member,path)
+        preproc_atm_vars(scenario,parent_member,path,boost_date)
     return xr.open_dataset(glob.glob(file)[0])
