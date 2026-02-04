@@ -9,8 +9,8 @@ try:
     realization = sys.argv[4]
     nb_realization = sys.argv[5]
 except:
-    dates = ["2080-02-14","2080-02-16","2080-02-18","2080-12-01","2080-12-03","2080-12-05"]
-    mems = 10
+    dates = ["2082-01-01", "2082-01-04"] #["2080-02-14","2080-02-16","2080-02-18","2080-12-01","2080-12-03","2080-12-05"] "2081-12-26", "2081-12-29", 
+    mems = 20
     scenario = "SSP370"
     realization = "A"
     nb_realization = 1500
@@ -32,7 +32,7 @@ for date in dates:
         print("need to concat more than one year of parent files")
         ds_parent_first_year = xr.open_dataset(f"{parent_path}b.e212.B{scenario}cmip6.f09_g17.{nb_realization}.cam.h6.{start_date.year}-01-01-03600.nc").isel(lev=slice(29, 32), ilev=slice(29, 33))
         ds_parent_second_year = xr.open_dataset(f"{parent_path}b.e212.B{scenario}cmip6.f09_g17.{nb_realization}.cam.h6.{date[0:4]}-01-01-03600.nc").isel(lev=slice(29, 32), ilev=slice(29, 33))
-        ds_parent = xr.concat([ds_parent_first_year.sel(time=slice(start_date,None)),ds_parent_second_year.sel(time=slice(None,date)).isel(time=slice(0,-23))],dim="time")
+        ds_parent = xr.concat([ds_parent_first_year.sel(time=slice(start_date,None)),ds_parent_second_year.sel(time=slice(None,date))],dim="time").isel(time=slice(0,-23))
     else:
         ds_parent = xr.open_dataset(f"{parent_path}b.e212.B{scenario}cmip6.f09_g17.{nb_realization}.cam.h6.{date[0:4]}-01-01-03600.nc").isel(lev=slice(29, 32), ilev=slice(29, 33))
         ds_parent = ds_parent.sel(time=slice(start_date,date)).isel(time=slice(0,-23)) #select time up to the hour before boosting happens
