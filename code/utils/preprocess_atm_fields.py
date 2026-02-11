@@ -90,12 +90,12 @@ def preproc_atm_vars(scenario,member,path,boost_date=""):
         ds_atm = []
         for year in tqdm(ut.get_time_range(scenario)):
             file = f"/net/meso/climphys/cesm212/b.e212.B{scen_file}cmip6.f09_g17.{realization}/archive/atm/hist/b.e212.B{scen_file}cmip6.f09_g17.{realization}.cam.h6.{year}-01-01-03600.nc"
-            ds_atm.append(ut.select_Europe(ut.zero_mean_longitudes(xr.open_dataset(file).isel(lev=slice(29, 32), ilev=slice(29, 33)))).resample(time="1D").mean()) # daily data, to not take up too much space
-        ds_atm = xr.concat(ds_atm,dim="time")
+            ds_atm.append(ut.select_Europe(ut.zero_mean_longitudes(xr.open_dataset(file).isel(lev=slice(29, 32), ilev=slice(29, 33))))) 
+        ds_atm = xr.concat(ds_atm,dim="time").resample(time="1D").mean() # daily data, to not take up too much space
     else:
         def preproc_boost(ds):
-            return ut.select_Europe(ut.zero_mean_longitudes(ds.isel(lev=slice(29, 32), ilev=slice(29, 33)))).resample(time="1D").mean()
-        files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h6.*.nc"))
+            return ut.select_Europe(ut.zero_mean_longitudes(ds)).resample(time="1D").mean()
+        files = sorted(glob.glob(f"/net/xenon/climphys/lbloin/CESM2energy/output/boost/{member}/atmospheric_variables/atmospheric_variables_{boost_date}_ens*.nc"))
         ds_atm = xr.open_mfdataset(files,preprocess=preproc_boost,concat_dim="member", combine="nested")
         ds_atm["member"] = list(range(1,len(ds_atm.member)+1))
     # Wind
@@ -126,24 +126,30 @@ def preproc_atm_vars(scenario,member,path,boost_date=""):
         # Z500
         def preproc(ds):
             return ut.select_Europe(ut.zero_mean_longitudes(ds))
-        files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.100{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.100{realization}.{boost_date}.ens*.cam.h1.*.nc"))
-        z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")
-        z500["member"] = list(range(1,len(z500.member)+1))
+        files = sorted(glob.glob(f"/net/meso/climphys/cesm212/boosting/archive/B{scen_file}cmip6.000{realization}.{boost_date}.ens*/atm/hist/B{scen_file}cmip6.000{realization}.{boost_date}.ens*.cam.h1.*.nc"))
+        ds_Z500 = xr.open_mfdataset(files,preprocess=preproc,concat_dim="member", combine="nested")["Z500"]
+        ds_Z500["member"] = list(range(1,len(ds_Z500.member)+1))
         # save
         ds_wind.to_netcdf(f"{path}Raw_CESM2_s100_{scenario}_boost_{member}_{boost_date}.nc")
         ds_PV.to_netcdf(f"{path}Raw_CESM2_global-horizontal_{scenario}_boost_{member}_{boost_date}.nc")
         ds_temp.to_netcdf(f"{path}Raw_CESM2_temperature_{scenario}_boost_{member}_{boost_date}.nc")
-        ds_Z500.to_netcdf(f"{path}Raw_CESM2_Z500_{scenario}_boost_{member}_{boost_date}.nc")
+        ds_Z500.to_dataset(name="Z500").to_netcdf(f"{path}Raw_CESM2_Z500_{scenario}_boost_{member}_{boost_date}.nc")
     return None
 
 def preproc_cesm2(scenario,member,path,var):
     file = f"{path}Raw_CESM2_{var}_{scenario}_{member}.nc"
     if len(glob.glob(file)) ==0:
         preproc_atm_vars(scenario,member,path)
-    return xr.open_dataset(glob.glob(file)[0])
+    ds = xr.open_dataset(glob.glob(file)[0])
+    if var == "s100":
+        ds, da_alpha = interpolate_wind_xr(ds, 100) 
+    return ds
 
 def preproc_cesm2_boosted(boost_date,scenario,parent_member,path,var):
     file = f"{path}Raw_CESM2_{var}_{scenario}_boost_{parent_member}_{boost_date}.nc"
     if len(glob.glob(file)) ==0:
         preproc_atm_vars(scenario,parent_member,path,boost_date)
-    return xr.open_dataset(glob.glob(file)[0])
+    ds = xr.open_dataset(glob.glob(file)[0])
+    if var == "s100":
+        ds, da_alpha = interpolate_wind_xr(ds, 100) 
+    return ds
