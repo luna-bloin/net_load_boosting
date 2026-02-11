@@ -21,6 +21,6 @@ for year in {1995..2014}
     ${output_path}/tmp_${year}_z500_ERA5.nc
 done
 # merge all years
-cdo mergetime ${output_path}/tmp_*_z500_ERA5.nc ${output_path}/Raw_ERA5_z500.nc
+cdo mergetime ${output_path}/tmp_*_z500_ERA5.nc ${output_path}/Raw_ERA5_Z500.nc
 # clean up
 rm ${output_path}/tmp_*_z500_ERA5.nc
