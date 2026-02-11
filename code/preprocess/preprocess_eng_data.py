@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 import glob
+from datetime import timedelta
 
 # =================================================================================================================================================================================================
 # === Preprocesses the climate2energy-converted data from CESM2 into nc files: for each technology separately, and together (as raw output, and combined with capacity scenarios, as net load). ===
@@ -67,7 +68,8 @@ if __name__ == "__main__":
     ds_demand = pc.open_weather_insensitive_demand(scenario,boost,members)
     abs_output = xr.concat([abs_output,ds_demand],dim="technology")
     if len(boost) > 0:
-        abs_output = abs_output.sel(time=ut.get_time_plus_delta(boost,60)) # simulations last roughly 60 days
+        abs_output = abs_output.sel(time=ut.get_time_plus_delta(boost,60,delta_minus=7)) # simulations last roughly 60 days
+
     # Save
     abs_output.to_dataset(name="eng_vars").to_netcdf(f"{out_path}eng_vars_GWh_{scenario}{boost_save}.nc")
     
@@ -87,15 +89,15 @@ if __name__ == "__main__":
     # calculate hydro_inflow (only keep countries that have hydro inflow)
     hydro_inflow_full = abs_output.sel(technology="hydro_inflow").dropna(dim="country",how="all")
     # open optimized storage from francesco's energy model
-    storage_ds = hs.open_storage(scenario,boost)
+    storage_ds = hs.open_storage(scenario,"")
     storage_roll= storage_ds.rolling(time=24*21,center=True).mean().stack(dim=("member","time")) # rolling average to smooth the curve
     storage_max = storage_ds.max(("member","time")) #max value, to cap the storage
     if len(boost) == 0:
         starting_storage = storage_ds.groupby('time.dayofyear')[1].mean(("member","time")) # mean storage level on January 1st (used as starting point)
     else:
-        starting_storage = hs.get_boosted_start_storage(boost,storage_ds,boost_realization)
+        starting_storage = hs.get_boosted_start_storage(scenario,str(ut.str_to_cftime_noleap(boost)-timedelta(days=7))[0:10],storage_ds,boost_realization)
     # calculate and save hydro storage effects
-    net_load_with_hydro = hs.storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage)
+    net_load_with_hydro = hs.storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage,boost)
     net_load_with_hydro.to_netcdf(f"{out_path}net_load_by_country_hydro_storage_{scenario}{boost_save}.nc")
     net_load_with_hydro.sum("country").to_netcdf(f"{out_path}net_load_hydro_storage_{scenario}{boost_save}.nc")
     

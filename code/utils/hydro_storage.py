@@ -15,73 +15,77 @@ def open_storage(scenario,boost):
     This is not to be confused with our parameter scenario, which refers to either historical or SSP370.
     :param scenario: either historical or SSP245
     """
-    file = glob.glob(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
-    try :
-        return xr.open_dataset(file[0])["storage"]
-    except:
-        # open pandas df 
-        df = pd.read_csv(f"../inputs/storage_level_reservoir_hydro_{scenario}.csv", index_col=[0,1,2]).droplevel('technology')
-        df.index.names = ['parallel_sims', 'country']
-        df.index = df.index.set_levels(
-            [
-                df.index.levels[0].str.extract(r'(\d+)')[0].astype(int)
-                if level.name == 'parallel_sims' else level
-                for level in df.index.levels
-            ]
-        )
-        # sort the index
-        df = df.sort_index(level='parallel_sims')
-
-        # Parameters
-        members = ['A', 'B', 'C']
-        years_per_member = 20
-        total_sims = years_per_member * len(members)  # 60 parallel simulation total
-        time_per_year = 8760  # hours per year (no leap years)
-        if scenario == "historical":
-            start_year = 1995
-        else:
-            start_year = 2080
-        
-        # Extract the simulation indices and nodes from DataFrame index
-        sim_indices = df.index.levels[0].astype(int)
-        nodes = df.index.levels[1]
-        
-        # Create arrays for member and year corresponding to each parallel simulation
-        members_arr = np.repeat(members, years_per_member)   # ['A']*20 + ['B']*20 + ['C']*20
-        years_arr = np.tile(np.arange(start_year, start_year + years_per_member), len(members))  # repeated for each member
-        
-        # Create xarray DataArray from the DataFrame values
-        # Reshape df.values from (parallel_sims, nodes, time) => (60, n_nodes, 8760)
-        da = xr.DataArray(
-            df.values.reshape(total_sims, len(nodes), time_per_year),
-            dims=['parallel_sims', 'country', 'time'],
-            coords={
-                'parallel_sims': sim_indices,
-                'country': ut.country_code_to_country_name(list(nodes)),
-                'time': df.columns.astype(int)
-            }
-        )
-        # assign member and year coordinates to the 'parallel_sims' dimension
-        da = da.assign_coords(
-            member=('parallel_sims', members_arr),
-            year=('parallel_sims', years_arr)
-        )
-        # unstack the 'parallel_sims' dimension into separate 'member' and 'year' dimensions
-        da = da.set_index(parallel_sims=['member', 'year']).unstack('parallel_sims')
-        da_stacked = da.stack(year_time=("year", "time")).drop_vars(['year_time', 'time', 'year'])
-        # For 20 years of hourly data, no leap days
-        times = []
-        for year in range(start_year, start_year + years_per_member):
-            for hour in range(time_per_year):
-                delta = datetime.timedelta(hours=hour)
-                times.append(cftime.DatetimeNoLeap(year, 1, 1) + delta)
-        # Assign the combined datetime coordinate
-        da_stacked = da_stacked.assign_coords(year_time=times)
-        # # Rename the stacked dimension to 'time' for clarity
-        da_stacked = da_stacked.rename({'year_time': 'time'})
-        ds_storage = da_stacked.to_dataset(name="storage")
-        ds_storage.to_netcdf(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
-        return ds_storage["storage"]
+    if len(boost) == 0:
+        file = glob.glob(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
+        try :
+            return xr.open_dataset(file[0])["storage"]
+        except:
+            # open pandas df 
+            df = pd.read_csv(f"../inputs/storage_level_reservoir_hydro_{scenario}.csv", index_col=[0,1,2]).droplevel('technology')
+            df.index.names = ['parallel_sims', 'country']
+            df.index = df.index.set_levels(
+                [
+                    df.index.levels[0].str.extract(r'(\d+)')[0].astype(int)
+                    if level.name == 'parallel_sims' else level
+                    for level in df.index.levels
+                ]
+            )
+            # sort the index
+            df = df.sort_index(level='parallel_sims')
+    
+            # Parameters
+            members = ['A', 'B', 'C']
+            years_per_member = 20
+            total_sims = years_per_member * len(members)  # 60 parallel simulation total
+            time_per_year = 8760  # hours per year (no leap years)
+            if scenario == "historical":
+                start_year = 1995
+            else:
+                start_year = 2080
+            
+            # Extract the simulation indices and nodes from DataFrame index
+            sim_indices = df.index.levels[0].astype(int)
+            nodes = df.index.levels[1]
+            
+            # Create arrays for member and year corresponding to each parallel simulation
+            members_arr = np.repeat(members, years_per_member)   # ['A']*20 + ['B']*20 + ['C']*20
+            years_arr = np.tile(np.arange(start_year, start_year + years_per_member), len(members))  # repeated for each member
+            
+            # Create xarray DataArray from the DataFrame values
+            # Reshape df.values from (parallel_sims, nodes, time) => (60, n_nodes, 8760)
+            da = xr.DataArray(
+                df.values.reshape(total_sims, len(nodes), time_per_year),
+                dims=['parallel_sims', 'country', 'time'],
+                coords={
+                    'parallel_sims': sim_indices,
+                    'country': ut.country_code_to_country_name(list(nodes)),
+                    'time': df.columns.astype(int)
+                }
+            )
+            # assign member and year coordinates to the 'parallel_sims' dimension
+            da = da.assign_coords(
+                member=('parallel_sims', members_arr),
+                year=('parallel_sims', years_arr)
+            )
+            # unstack the 'parallel_sims' dimension into separate 'member' and 'year' dimensions
+            da = da.set_index(parallel_sims=['member', 'year']).unstack('parallel_sims')
+            da_stacked = da.stack(year_time=("year", "time")).drop_vars(['year_time', 'time', 'year'])
+            # For 20 years of hourly data, no leap days
+            times = []
+            for year in range(start_year, start_year + years_per_member):
+                for hour in range(time_per_year):
+                    delta = datetime.timedelta(hours=hour)
+                    times.append(cftime.DatetimeNoLeap(year, 1, 1) + delta)
+            # Assign the combined datetime coordinate
+            da_stacked = da_stacked.assign_coords(year_time=times)
+            # # Rename the stacked dimension to 'time' for clarity
+            da_stacked = da_stacked.rename({'year_time': 'time'})
+            ds_storage = da_stacked.to_dataset(name="storage")
+            ds_storage.to_netcdf(f"/net/xenon/climphys/lbloin/energy_boost/storage_level_reservoir_hydro_{scenario}.nc")
+            return ds_storage["storage"]
+    else:
+        print("opening storage level from parent")
+        return xr.open_dataset(f"/net/xenon/climphys/lbloin/energy_boost/net_load_by_country_hydro_storage_{scenario}.nc").storage
 
 
 def calculate_storage_net_load(inflow_t, net_load_t, storage_t_minus_1, net_load_thresh, mean,std,storage_max,capacity_thresh):
@@ -183,7 +187,7 @@ def calculate_storage_net_load_country(net_load, hydro_inflow,storage_roll,stora
     out_ds["net_load_adjusted"] = net_load_adj
     return out_ds
 
-def storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage):
+def storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_roll,storage_max,starting_storage,boost):
     """
     Calculates storage effects over all dimensions of the net load dataset (technology capacity scenario, heating scenario and member)"""
     adjusted_net_load_capac = []
@@ -199,7 +203,10 @@ def storage_net_load_all_dims(abs_vars_tech_sum,techs,hydro_inflow_full,storage_
                 hydro_inflow = hydro_inflow_full.sel(capacity_scenario=capacity_scenario,member=member,heating_scenario=heat_scenario)
                 max_capac = get_hydro_capac(hydro_inflow.country.values).max_capac
                 # calculate adjusted net load and storage
-                adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,0,max_capac)
+                if len(boost) == 0:
+                    adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage,0,max_capac)
+                else:
+                    adjusted_net_load=calculate_storage_net_load_country(net_load_specific, hydro_inflow,storage_roll,storage_max,starting_storage.sel(capacity_scenario=capacity_scenario,heating_scenario=heat_scenario),0,max_capac)
                 adjusted_net_load_mem.append(adjusted_net_load)
             adjusted_net_load_heat_scenario.append(xr.concat(adjusted_net_load_mem,dim=pd.Index(abs_vars_tech_sum.member.values, name="member")))
         adjusted_net_load_capac.append(xr.concat(adjusted_net_load_heat_scenario,dim=pd.Index(list(techs["heating-demand"].keys()), name="heating_scenario")))
@@ -231,5 +238,5 @@ def get_hydro_capac(countries):
     )
     return ds_hydro_capac
 
-def get_boosted_start_storage(boost,ds_storage,boost_realization):
-    return ds_storage.sel(time=boost,member=boost_realization).mean("time") #mean over hours in that day
+def get_boosted_start_storage(scenario,boost,ds_storage,boost_realization):
+    return open_storage(scenario,boost).sel(time=boost,member=boost_realization).mean("time") #mean over hours in that day

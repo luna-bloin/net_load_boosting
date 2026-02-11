@@ -70,7 +70,7 @@ def save_eng_var(scenario,variable,extra,boost,boost_realization):
                 dss.append(read_df_to_xr(file))
                 ds_all = xr.concat(dss,dim="member")
                 ds_all["member"] = list(range(1,len(ds_all.member)+1))
-            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap").sel(time=slice(boost,None)) # make sure that you keep only the dates after boosting (files are concat with parents for clim2energy reasons, not necessary here)        
+            ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")#.sel(time=slice(boost,None)) # make sure that you keep only the dates after boosting (files are concat with parents for clim2energy reasons, not necessary here)        
             ds_all.to_netcdf(save_file)
             return ds_all.load()
 
@@ -126,18 +126,20 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
             if tech == "hydro_inflow":
                 # need to concatenate first data point before boosting (up to a week before) to get seamless data from boosting
                 ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_inflow_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds)[tech]
-                first_before_boost = ut.str_to_cftime_noleap(boost)
+                ds = ds.sel(time=slice(boost,None)) # to make sure that no time before boosting is selected
+                first_before_boost = ut.str_to_cftime_noleap(boost) - timedelta(days=1)
                 while len(ds_parent.sel(time=str(first_before_boost)[0:10]).time) == 0:
                     first_before_boost -= timedelta(days=1)
-                ds_parent = ds_parent.sel(time=str(first_before_boost)[0:10])
+                
+                ds_parent = ds_parent.sel(time=slice(str(first_before_boost-timedelta(days=7))[0:10],str(first_before_boost)[0:10]))
                 ds = xr.concat([ds_parent,ds],dim="time")
                 
                 ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
                 # remove excess time before boosting to match all other datasets
-                ds = ds.sel(time=slice(boost,None))
+                ds = ds.sel(time=slice(ut.str_to_cftime_noleap(boost)-timedelta(days=7),None)) # s
             elif tech == "hydro_ror":
                 # need to concatenate first data point to get seamless data from boosting
-                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_ror_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds).sel(time=boost)[tech]
+                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_ror_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds).sel(time=slice(str(ut.str_to_cftime_noleap(boost)-timedelta(days=7))[0:10],str(ut.str_to_cftime_noleap(boost))[0:10]))[tech]
                 ds = xr.concat([ds_parent,ds],dim="time")
                 
                 ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
