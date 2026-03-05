@@ -2,12 +2,14 @@
 import xarray as xr
 import cftime
 from datetime import timedelta
+import sys
+
 try: 
-    dates = sys.argv[1]
-    mems = sys.argv[2]
-    scenario = sys.argv[3]
-    realization = sys.argv[4]
-    nb_realization = sys.argv[5]
+    dates = sys.argv[1:5]
+    mems = eval(sys.argv[6])
+    scenario = sys.argv[7]
+    realization = sys.argv[8]
+    nb_realization = sys.argv[9]
 except:
     dates = ["2088-12-02","2088-12-05","2088-12-08","2088-12-11"] #["2081-12-26", "2081-12-29","2082-01-01", "2082-01-04"] #["2080-02-14","2080-02-16","2080-02-18","2080-12-01","2080-12-03","2080-12-05"]  
     mems = 20
