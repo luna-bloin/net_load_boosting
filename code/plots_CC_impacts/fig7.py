@@ -16,19 +16,14 @@ import string
 # =================
 # === Functions ===
 # =================
-def plot_hydro_storage(heating_scenario,capacity_scenario,scenario,countries=["France","Norway"],fsize=(20,5)):
-    # configuration of figure dimensions
-    if len(countries) > 5:
-        f,ax=plt.subplots(4,int(len(countries)/2),figsize=fsize,sharex=True)
-        b_adjust = 0.12
-        ax_iter = [0,2]
-    else:
-        f,ax=plt.subplots(2,int(len(countries)),figsize=fsize,sharex=True)
-        b_adjust = 0.24
-        ax_iter = [0]
+def plot_hydro_storage(countries=["France","Norway"],fsize=(20,5),heating_scenario = "fully_electrified",capacity_scenario = "future",scenario = "historical"):
+    f1,ax1=plt.subplots(1,int(len(countries)),figsize=fsize,sharex=True)
+    f2,ax2=plt.subplots(1,int(len(countries)),figsize=fsize,sharex=True)
+    b_adjust = 0.25
+    ax_iter = [0]
     for i,country in enumerate(countries):
-        net_ax = ax[2*(int(i/5))][i%5]
-        stor_ax = ax[2*(int(i/5))+1][i%5]
+        net_ax = ax1[i%5]
+        stor_ax = ax2[i%5]
         nl_hydro_here = nl[scenario]["hydro_by_country"].sel(heating_scenario=heating_scenario,capacity_scenario=capacity_scenario,country=country)
         # plot net load (with and without hydro storage)
         nl_hydro_nl = nl_hydro_here.net_load_adjusted.groupby("time.dayofyear")
@@ -59,24 +54,22 @@ def plot_hydro_storage(heating_scenario,capacity_scenario,scenario,countries=["F
         stor_ax.set_title("")
         net_ax.set_xlabel("")
         stor_ax.set_xlabel("")
+        net_ax.set_xticks([60,152,244,335],labels=["Mar","Jun","Sep","Dec"])
         stor_ax.set_xticks([60,152,244,335],labels=["Mar","Jun","Sep","Dec"])
     
-    
-    for i,a in enumerate(ax.flatten()):
-        pco.set_grid(a)
-        a.text(0.01,0.9,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
-        a.set_ylabel("")
-    for i in ax_iter:
-        ax[i][0].set_ylabel("Net load [GW]")
-        ax[i+1][0].set_ylabel("Storage level [GW]")
-        
-    handles, labels = ax[0][0].get_legend_handles_labels()
-    handles2, labels2 = ax[1][0].get_legend_handles_labels()
-    
-    f.legend(handles+handles2, labels+labels2, loc='lower center',ncol=2)
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=b_adjust)
-    return f,ax
+    f = [f1,f2]
+    ylab= ["Net load [GW]","Storage level [GWh]"]
+    for j,ax in enumerate([ax1,ax2]):
+        for i,a in enumerate(ax.flatten()):
+            pco.set_grid(a)
+            a.text(0.01,0.9,string.ascii_lowercase[i+j*2],weight="bold",transform=a.transAxes)
+            a.set_ylabel("")
+        ax[0].set_ylabel(ylab[j])
+        handles, labels = ax[0].get_legend_handles_labels()
+        f[j].legend(handles, labels, loc='lower center',ncol=2)
+        f[j].tight_layout()
+        f[j].subplots_adjust(bottom=b_adjust)
+    return f1,ax1,f2,ax2
 
 # ==================
 # === Open files ===
@@ -99,7 +92,7 @@ for scenario in  ut.CESM2_REALIZATION_DICT:
 # get storage as hour of year per country
 storage_doys = {}
 for scenario in  ut.CESM2_REALIZATION_DICT:
-    storage = hs.open_storage(scenario,False)
+    storage = hs.open_storage(scenario,'')
     # Convert to DataArray of hour-of-year values (0–8759)
     hour_of_year = xr.DataArray(
         np.arange(len(storage.time)) % 8760,
@@ -150,7 +143,7 @@ mn.plot(color=pco.colors[0],label="Dispatched reservoir hydropower",linewidth=0.
 axs.fill_between(mn.dayofyear.values,mn-std,mn+std,color=pco.colors[0],alpha=0.3)
 axs.set_xlabel("")
 axs.set_title("European mean")
-axs.set_ylabel("Generation [GW]")
+axs.set_ylabel("Hydropower generation [GW]")
 axs.set_xticks([60,152,244,335],labels=["Mar","Jun","Sep","Dec"])
 pco.set_grid(axs)
 axs.text(0.01,0.95,string.ascii_lowercase[4],weight="bold",transform=axs.transAxes)
@@ -163,5 +156,6 @@ plt.savefig("../../figs_CC_impacts/appendix_fig2_bottom_panels.png",bbox_inches=
 # === Appendix figure Panel a-d ===
 # =================================
 
-f,ax= plot_hydro_storage(heating_scenario,capacity_scenario,scenario,countries=["France","Norway"],fsize=(7,4))
-plt.savefig("../../figs_CC_impacts/appendix_fig2_top_panels.png",bbox_inches="tight", dpi = 600,transparent=True)
+f1,ax1,f2,ax2= plot_hydro_storage(countries=["France","Norway"],heating_scenario = heating_scenario,capacity_scenario = capacity_scenario,scenario = scenario,fsize=(7,2.1))
+f1.savefig("../../figs_CC_impacts/fig7_a_b.png",bbox_inches="tight", dpi = 600,transparent=True)
+f2.savefig("../../figs_CC_impacts/fig7_c_d.png",bbox_inches="tight", dpi = 600,transparent=True)
