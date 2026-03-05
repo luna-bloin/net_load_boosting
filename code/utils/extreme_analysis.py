@@ -139,7 +139,7 @@ def plot_peak(to_plot_atm,mn_atm,tvals=0,zvals=0,wind_vals=0,save_name=[]):
     variable_labels = ["Temperature anomaly [C]", "Wind speed anomaly [m/s2]"]
     to_plot_rel = (to_plot_atm.groupby("time.dayofyear")-mn_atm).drop_vars("dayofyear")
     if zvals==0:
-        zvals=[(to_plot_atm).Z500.min(),(to_plot_atm).Z500.max()]
+        zvals=[round(to_plot_atm.Z500.min().item(),-2),round(to_plot_atm.Z500.max().item(),-2)]
     if tvals==0:
         tvals = max(np.abs(to_plot_rel.temperature.min().item()),np.abs(to_plot_rel.temperature.max().item()))
     if wind_vals==0:
@@ -157,7 +157,7 @@ def plot_peak(to_plot_atm,mn_atm,tvals=0,zvals=0,wind_vals=0,save_name=[]):
         ax[i].set_title("")
     f.suptitle("Date of peak net load")
     if len(save_name) > 0:
-        f.savefig(f"../figs_tryout/atm_plot_{save_name}.svg",bbox_inches="tight",transparent=True,dpi=600)
+        f.savefig(f"../figs_tryout/atm_plot_{save_name}.png",bbox_inches="tight",transparent=True,dpi=600)
     return tvals,zvals,wind_vals
 
 # def parent_atm_processing(date_ranges,member,season,atm_ds,z500_ds,mn_atm_ds,mn_z500_ds=[]):
@@ -272,7 +272,7 @@ def plot_one_event(tech_nl,region_nl,nl_one_scen,top_event,dur_event,dur_scenari
                 boost_tech = find_nl_top(boost_tech,top_event,dur_scenario,boost=True).sel(time=slice(start,end_time))/1000
             f,ax = plot_by_tech(to_plot,to_plot_all.sel(value_type="mean"),to_plot_all.sel(value_type="std"),start,end,boost=boost_tech,boost_end = boost_end)
             if len(save_name) > 0:
-                f.savefig(f"../figs_tryout/tech_breakdown_{save_name}.svg",bbox_inches="tight",transparent=True,dpi=600)
+                f.savefig(f"../figs_tryout/tech_breakdown_{save_name}.png",bbox_inches="tight",transparent=True,dpi=600)
         if i ==1:
             # boosted runs
             if len(boost_region) > 0:
@@ -280,9 +280,10 @@ def plot_one_event(tech_nl,region_nl,nl_one_scen,top_event,dur_event,dur_scenari
                 boost_region = find_nl_top(boost_region,top_event,dur_scenario,boost=True).sel(time=slice(start,end_time))/1000
             f,ax = plot_by_region(to_plot,to_plot_all.sel(value_type="mean"),to_plot_all.sel(value_type="std"),start,end,boost=boost_region,boost_end = boost_end)
             if len(save_name) > 0:
-                f.savefig(f"../figs_tryout/region_breakdown_{save_name}.svg",bbox_inches="tight",transparent=True,dpi=600)
+                f.savefig(f"../figs_tryout/region_breakdown_{save_name}.png",bbox_inches="tight",transparent=True,dpi=600)
     # plot atmospheric plots
     tvals,zvals,wind_vals = plot_peak(atm_ds.sel(time=peak_date),atm_mn,save_name=save_name)
+    return tvals,zvals,wind_vals
 
 def plot_by_tech(to_plot,mn_here,st_here,event_start,event_end,boost=[],boost_end = [],f=[],axs=[],plot_mn_std=True,linewidth=1.4):
     # fig config
@@ -314,7 +315,8 @@ def plot_by_tech(to_plot,mn_here,st_here,event_start,event_end,boost=[],boost_en
             # plot event
             to_plot_tech.plot(ax=ax,color=colors[i][j],linewidth=linewidth)
             if len(boost) >0:
-                boost_tech.plot(hue="member", add_legend=False,ax=ax,color=colors[i][j],alpha=0.5,linewidth=0.6)
+                for event in boost_tech.event:
+                    boost_tech.sel(event=event).plot(ax=ax,color=colors[i][j],alpha=0.5,linewidth=0.6)
             #highlight time frame of event
             ax.axvspan(event_start,event_end,color="k",alpha=0.1)
             if len(boost) >0:
@@ -398,7 +400,8 @@ def plot_by_region(to_plot,mn_here,st_here,event_start,event_end,boost=[],boost_
         #plot event
         to_plot_region.plot(ax=ax[j],color=pco.colors[j],linewidth=1.4)
         if len(boost) > 0:
-            boost_region.plot(hue="member", add_legend=False,ax=ax[j],color=pco.colors[j],alpha=0.5,linewidth=0.6)
+            for event in boost_region.event:
+                    boost_region.sel(event=event).plot(ax=ax[j],color=pco.colors[j],alpha=0.5,linewidth=0.6)
         #highlight time frame of event
         ax[j].axvspan(event_start,event_end,color="k",alpha=0.1)
         if len(boost) >0:
@@ -413,4 +416,34 @@ def plot_by_region(to_plot,mn_here,st_here,event_start,event_end,boost=[],boost_
         pco.set_grid(ax[j])
     plt.tight_layout() 
     return f,ax
-        
+
+
+def plot_by_region_anom(to_plot,f=None,ax=None,xlims=[],ylims=[]):
+    # fig config
+    if ax is None:
+        f,ax=plt.subplots(1,4,figsize=(15,3),sharey=True)
+    regions = ["Northern Europe", "Southern Europe", "Western Europe","Eastern Europe"]
+    #get relative time
+    time_rel = (to_plot.time - to_plot.time[0])
+    time_rel = time_rel/(time_rel[1]*24)    
+    to_plot["time_rel"] = time_rel
+    to_plot=to_plot.swap_dims({"time": "time_rel"})
+    for j,region in enumerate(regions):
+        to_plot_region = to_plot.sel(region=region)
+        # plot event
+        to_plot_region.plot(ax=ax[j],color=pco.colors[j])
+        # plot configs
+        ax[j].set_title(region)
+        if j == 0:
+            ax[j].set_ylabel("Net load anomaly [TW]")
+        else:
+            ax[j].set_ylabel("")
+        ax[j].set_xlabel("Time [days]")
+        pco.set_grid(ax[j])
+        ax[j].axhline(0,linestyle="--",color="k")
+        if len(xlims)!=0:
+            ax[j].set_xlim(xlims[0],xlims[1])
+        if len(ylims)!=0:
+            ax[j].set_ylim(ylims[0],ylims[1])
+    plt.tight_layout()
+    return f,ax
