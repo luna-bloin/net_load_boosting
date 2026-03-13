@@ -46,22 +46,37 @@ def open_all_parent_nl(path,nl_only=False):
     if nl_only ==True:
         return nl,nl_qu,extremes
     # open tech by tech data
-    tech_nl = open_joint_clim(f"{path}eng_vars_GWh","eng_vars",country_sum=True)
-    mns_tech = ut.ds_hoy_in_full_time(tech_nl,"mn",dims=("time","member","climate"))
-    stds_tech = ut.ds_hoy_in_full_time(tech_nl,"std",dims=("time","member","climate"))
-    tech_nl =  xr.concat([tech_nl,mns_tech,stds_tech],dim=pd.Index(["full","mean","std"], name="value_type"))
-    # open by country data
-    country_nl = open_joint_clim(f"{path}net_load_by_country_hydro_storage","net_load_adjusted")
-    region_nl = ut.get_region_mean(country_nl.drop_sel(country="Macedonia"))
-    mns_region = ut.ds_hoy_in_full_time(region_nl,"mn",dims=("time","member","climate"))
-    stds_region = ut.ds_hoy_in_full_time(region_nl,"std",dims=("time","member","climate"))
-    region_nl =  xr.concat([region_nl,mns_region,stds_region],dim=pd.Index(["full","mean","std"], name="value_type"))
+    file = glob.glob(f"{path}tech_nl.nc")
+    if len(file)>0:
+        tech_nl = xr.open_dataset(file[0])["tech_nl"]
+    else:
+        tech_nl = open_joint_clim(f"{path}eng_vars_GWh","eng_vars",country_sum=True)
+        mns_tech = ut.ds_hoy_in_full_time(tech_nl,"mn",dims=("time","member","climate"))
+        stds_tech = ut.ds_hoy_in_full_time(tech_nl,"std",dims=("time","member","climate"))
+        tech_nl =  xr.concat([tech_nl,mns_tech,stds_tech],dim=pd.Index(["full","mean","std"], name="value_type"))
+        tech_nl.to_dataset(name="tech_nl").to_netcdf(f"{path}tech_nl.nc")
     # open storage data
-    storage_nl = open_joint_clim(f"{path}net_load_hydro_storage","storage")
-    mns_stor = ut.ds_hoy_in_full_time(storage_nl,"mn",dims=("time","member","climate"))
-    stds_stor = ut.ds_hoy_in_full_time(storage_nl,"std",dims=("time","member","climate"))
-    storage_nl =  xr.concat([storage_nl,mns_stor,stds_stor],dim=pd.Index(["full","mean","std"], name="value_type"))
-    return nl, nl_qu,extremes, tech_nl, country_nl, region_nl, storage_nl
+    file = glob.glob(f"{path}storage_nl.nc")
+    if len(file)>0:
+        storage_nl = xr.open_dataset(file[0])["storage_nl"]
+    else:
+        storage_nl = open_joint_clim(f"{path}net_load_hydro_storage","storage")
+        mns_stor = ut.ds_hoy_in_full_time(storage_nl,"mn",dims=("time","member","climate"))
+        stds_stor = ut.ds_hoy_in_full_time(storage_nl,"std",dims=("time","member","climate"))
+        storage_nl =  xr.concat([storage_nl,mns_stor,stds_stor],dim=pd.Index(["full","mean","std"], name="value_type"))
+        storage_nl.to_dataset(name="storage_nl").to_netcdf(f"{path}storage_nl.nc")
+    # open by country data
+    file = glob.glob(f"{path}region_nl.nc")
+    if len(file)>0:
+        region_nl = xr.open_dataset(file[0])["region_nl"]
+    else:
+        country_nl = open_joint_clim(f"{path}net_load_by_country_hydro_storage","net_load_adjusted")
+        region_nl = ut.get_region_mean(country_nl.drop_sel(country="Macedonia"))
+        mns_region = ut.ds_hoy_in_full_time(region_nl,"mn",dims=("time","member","climate"))
+        stds_region = ut.ds_hoy_in_full_time(region_nl,"std",dims=("time","member","climate"))
+        region_nl =  xr.concat([region_nl,mns_region,stds_region],dim=pd.Index(["full","mean","std"], name="value_type"))
+        region_nl.to_dataset(name="region_nl").to_netcdf(f"{path}region_nl.nc")
+    return nl, nl_qu,extremes, tech_nl, region_nl, storage_nl
 
 def open_atm_vars(path):
     dss_scen = {}
