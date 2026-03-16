@@ -134,9 +134,11 @@ def open_boost(path,boost_dates,start_parent,scenario,member,typ="transmission")
     return boost
 
 def find_start_end_boost(nl_boost_here,event,start,qu_parent):
-    to_plot_highlight = nl_boost_here.stack(event=("lead_time","member")).sel(event=event).dropna(dim="time",how="all").sel(time=slice(start,None))/1000
-    to_plot_highlight = to_plot_highlight.where(to_plot_highlight > qu_parent/1000)
-    to_plot_highlight = to_plot_highlight.isel(time=slice(0,to_plot_highlight.isnull().argmax("time").item()))
+    to_plot_highlight = nl_boost_here.stack(event=("lead_time","member")).sel(event=event).dropna(dim="time",how="all").sel(time=slice(start,None))/1000 #select only time period from when parent event starts
+    to_plot_highlight = to_plot_highlight.where(to_plot_highlight > qu_parent/1000) # find time steps above threshold
+    if len(to_plot_highlight.dropna(dim="time",how="all")) >0: # only if event exists
+        to_plot_highlight = to_plot_highlight.sel(time=slice(to_plot_highlight.dropna(dim="time",how="all").time.values[0],None)) # start where boosted energy shortfall event starts
+        to_plot_highlight = to_plot_highlight.isel(time=slice(0,to_plot_highlight.isnull().argmax("time").item())) # end where energy shortfall event ends
     return to_plot_highlight
 
 def find_dur_cum_boost(boost_to_plot,qu_parent):
