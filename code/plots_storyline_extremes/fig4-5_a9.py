@@ -61,7 +61,7 @@ def plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,
     lab_typ = ["Most", "Least"]
     for i,top_bottom in enumerate([top_5,bottom_5]):
         for j,event in enumerate(top_bottom.event.values):
-            if i +j*4 ==0:
+            if j*4 ==0:
                 lw = 0.8
                 lab=f"{lab_typ[i]} extreme simulations"
             else:
@@ -79,8 +79,9 @@ def plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,
     pco.set_grid(ax)
     ax.legend()
     ax.text(0.01,0.93,string.ascii_lowercase[0],weight="bold",transform=ax.transAxes)
-    ticks = to_plot.time.sel(time=xticks)
+    ticks = to_plot.time.sel(time=xticks).values
     ax.set_xticks(ticks)
+    ax.set_xticklabels(xticks)
     f.tight_layout()
     f.savefig(f"../../figs_storyline_extremes/overview_boosting_with_top_bottom_{heat}_{capac}.svg",bbox_inches="tight",dpi=600,transparent=True)
 
@@ -92,10 +93,11 @@ def plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,
     colors = ["sienna","olive"]
     for i,top_bottom in enumerate([top_5,bottom_5]):
         for event in top_bottom.event.values:
-            nl_start_end = exa.find_start_end_boost(nl_boost,event,start,qu_parent)
-            boost_to_plot = tech_boost.stack(event=("lead_time","member")).sel(event=event,time=slice(nl_start_end.time[0]-timedelta(days=2),nl_start_end.time[-1]))/1000 #in TW
-            boost_to_plot.sel(technology ="heating-demand").plot(color=colors[i],ax=ax[i][0],linewidth=lw)
-            get_on_offshore_wind(boost_to_plot).plot(color=colors[i],ax=ax[i][1],linewidth=lw)
+            nl_start_end = exa.find_start_end_boost(nl_boost,event,start,qu_parent).dropna(dim= "time",how="all")
+            if len(nl_start_end.time) > 0:
+                boost_to_plot = tech_boost.stack(event=("lead_time","member")).sel(event=event,time=slice(nl_start_end.time[0]-timedelta(days=2),nl_start_end.time[-1]))/1000 #in TW
+                boost_to_plot.sel(technology ="heating-demand").plot(color=colors[i],ax=ax[i][0],linewidth=lw)
+                get_on_offshore_wind(boost_to_plot).plot(color=colors[i],ax=ax[i][1],linewidth=lw)
     
     # === plot parent ===
     for i in range(2):
@@ -117,8 +119,9 @@ def plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,
             a.set_xlabel("")
         a.text(0.01,0.87,string.ascii_lowercase[i+1],weight="bold",transform=a.transAxes)
         plt.xlim(start-timedelta(days=2),end+timedelta(days=xlim_end))
-        ticks = parent_tech.time.sel(time=xticks)
-        ax.set_xticks(ticks)
+        ticks = parent_tech.time.sel(time=xticks).values
+        ticks = [ticks[0],ticks[-1]]
+        a.set_xticks(ticks)
     f.tight_layout()
     f.savefig(f"../../figs_storyline_extremes/tech_breakdown_boosting_with_top_bottom_{heat}_{capac}.png",bbox_inches="tight",dpi=600,transparent=True)
 
@@ -182,7 +185,7 @@ print("plotting figure 4 + 5a")
 # === Figure 4a ===
 plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,start,end,qu_parent,heat,capac,22,["2082-01-11", "2082-01-31"])
 # === Figure 4b-c ===
-plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,start,end,qu_parent,heat,capac,22,["2082-01-11", "2082-01-31"])
+plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,start,end,qu_parent,heat,capac,22,slice("2082-01-11", "2082-01-31"))
 # === Figure 5a ===
 plot_distrib_with_boosting(extremes,dur_cum_boost,cum_parent,heat,capac,0,250)
 print("figures saved")
@@ -207,9 +210,9 @@ print("boosted files opened")
 
 print("plotting figure 5b + appendix figure 9")
 # === Appendix Figure 9a ===
-plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,start,end,qu_parent,heat,capac,1,["2088-12-25", "2089-01-14"])
+plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,start,end,qu_parent,heat,capac,1,["2088-12-20", "2088-12-26"])
 # === Appendix Figure 9b-c ===
-plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,start,end,qu_parent,heat,capac,1,["2089-12-25", "2089-01-14"])
+plot_tech_breakdown_boosting(parent_tech,tech_boost,top_5,bottom_5,nl_boost,start,end,qu_parent,heat,capac,1,slice("2088-12-20", "2088-12-26"))
 # === Figure 5b ===
 plot_distrib_with_boosting(extremes,dur_cum_boost,cum_parent,heat,capac,1,10)
 print("figures saved")
