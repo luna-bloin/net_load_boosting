@@ -123,6 +123,10 @@ def open_boost(path,boost_dates,start_parent,scenario,member,typ="transmission")
                 name = "net_load_by_country_hydro_storage"
                 parent = ut.get_region_mean(xr.open_dataset(f"{path}{name}_{scenario}.nc").net_load_adjusted.drop_sel(country="Macedonia"))
                 ds = ut.get_region_mean(xr.open_dataset(f"{path}{name}_{scenario}_boost_{member}_{date}.nc").net_load_adjusted.drop_sel(country="Macedonia"))
+            elif typ =="storage":
+                name = "net_load_hydro_storage"
+                parent = xr.open_dataset(f"{path}{name}_{scenario}.nc").storage
+                ds = xr.open_dataset(f"{path}{name}_{scenario}_boost_{member}_{date}.nc").storage
             ds = ds.sel(time=slice(date,None))
             parent_here = parent.sel(member=member).drop_vars("member").broadcast_like(ds)
             parent_here = parent_here.sel(time=slice(start_parent, ut.str_to_cftime_noleap(date)-timedelta(hours=1))) #prepare parent for concat
