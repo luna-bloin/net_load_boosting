@@ -147,8 +147,6 @@ for i,scen in enumerate(two_representative_scenarios):
         handles, labels = ax_doy.get_legend_handles_labels() 
         fig.legend(handles, labels, loc='lower center',ncol=5,frameon=False)
 axes = fig.get_axes()
-axes[3].sharey(axes[0])
-axes[4].sharey(axes[1])
 for i,a in enumerate(axes):
     a.text(0.01,0.95,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
 
