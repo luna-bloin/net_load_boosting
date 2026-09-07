@@ -23,8 +23,8 @@ in_path_discharge = "/net/xenon/climphys/lbloin/CESM2energy/output/boost/"
 out_path = "/net/xenon/climphys/lbloin/energy_boost/"
 
 boost_date = sys.argv[1] #date of boosting
-realization = sys.argv[2]
-scenario = sys.argv[3]
+realization = sys.argv[2] # A, B, or C
+scenario = sys.argv[3] #
 
 # =================
 # === Discharge ===
