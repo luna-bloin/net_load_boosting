@@ -215,24 +215,19 @@ atm,atm_mn = exa.open_atm_vars(path)
 print("files opened")
 
 # ================
-# === Figure 2 ===
+# === Figure 5 ===
 # ================
-print("plotting fig 2-3")
+print("plotting fig 5")
 heat = "fully_electrified"
 capac = "future"
 climate = 'SSP370'
 tvals,zvals,wind_vals = plot_tech_region_weather(heat,capac,climate)
 
-
-# ================
-# === Figure 3 ===
-# ================
-
 heat = "current_electrified"
 capac = "future_wind_x2"
 climate = 'SSP370'
 plot_tech_region_weather(heat,capac,climate,tvals=tvals,zvals=zvals,wind_vals=wind_vals)
-print("fig 2-3 saved")
+print("fig 5 saved")
 
 
 # ============================

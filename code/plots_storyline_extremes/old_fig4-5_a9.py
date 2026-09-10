@@ -61,7 +61,7 @@ def plot_net_load_boosted_overview(nl_boost,nl_parent_only_event,top_5,bottom_5,
     lab_typ = ["Most", "Least"]
     for i,top_bottom in enumerate([top_5,bottom_5]):
         for j,event in enumerate(top_bottom.event.values):
-            if j*4 ==0:
+            if  j==i*4:
                 lw = 0.8
                 lab=f"{lab_typ[i]} extreme simulations"
             else:
