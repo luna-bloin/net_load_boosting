@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 import numpy as np
+import cartopy.crs as ccrs
+import cartopy.io.shapereader as shpreader
+import utils as ut
 
 ### Matplotlib parameters
 plt.rcParams.update({
@@ -57,3 +60,26 @@ def convert_colorbar_ticks_to_strings(cbar):
     formatted_ticks = [f"{tick:.6g}" for tick in ticks]
     cbar.set_ticks(ticks)  # Ensure the ticks remain the same
     cbar.set_ticklabels(formatted_ticks)  # Apply formatted labels
+
+shpfilename = shpreader.natural_earth(
+    resolution="50m",
+    category="cultural",
+    name="admin_0_countries",
+)
+
+reader = shpreader.Reader(shpfilename)
+selected_geometries = [
+    record.geometry
+    for record in reader.records()
+    if record.attributes["NAME"] in list(ut.country_name_to_country_code(None).keys())
+]
+
+def add_country_borders(ax):
+    ax.add_geometries(
+        selected_geometries,
+        crs=ccrs.PlateCarree(),
+        facecolor="none",
+        edgecolor="black",
+        linewidth=0.4,
+    )
+    return ax
