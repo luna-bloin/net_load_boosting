@@ -225,3 +225,14 @@ def find_peak(nl_here,mem,end,duration):
     start = end - timedelta(days=int(duration))
     peak = nl_here.sel(member=mem,time=slice(start,end)).max().item()
     return peak
+
+def cumulative_nl_boost(boosted_nl,start,qu_parent):
+    """
+    takes a dataset of stacked (lead time, member) boosted net load and returns the cumulative threshold exceedence
+    """
+    boosted_nl_stacked = boosted_nl.stack(event=("lead_time","member")).dropna(dim="time",how="all")
+    cumsum_boosts = []
+    for ev in boosted_nl_stacked.event:
+        drought = find_start_end_boost(boosted_nl,ev,start,qu_parent)
+        cumsum_boosts.append((drought-qu_parent/1000).where(drought - qu_parent/1000 > 0,0).cumsum())
+    return xr.concat(cumsum_boosts,dim="event")
