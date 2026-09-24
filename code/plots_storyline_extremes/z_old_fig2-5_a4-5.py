@@ -226,7 +226,7 @@ def plot_boosting_overview(nl_boost,nl_parent_only_event,start,end,qu_parent,cum
             y=0.95
         a.text(0.01,y,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
     ax1.set_ylabel("Net load [TW]")
-    ax2.set_ylabel("Cumulative threshold"+ "\n"+"exceedence [TWh]")
+    ax2.set_ylabel("Cumulative threshold"+ "\n"+"exceedance [TWh]")
     ax3.set_ylabel("Demand [TW]")
     ax4.set_ylabel("Generation [TW]")
     ax5.set_ylabel("Generation [TW]")
@@ -249,7 +249,7 @@ def plot_distrib_with_boosting(ax, cum_scenario,dur_cum_boost,cum_parent,heat,ca
     """code for plotting figure 5"""        
     #plot distributions
     sns.kdeplot(cum_scenario.values, bw_adjust=0.75,color="k",linewidth=0.7,label="Parent distribution", cut=0,fill=True,ax=ax)
-    sns.kdeplot( dur_cum_boost.stack(event=("lead_time","member")).sel(typ="cum").values, bw_adjust=0.75,color="sienna",alpha=0.6,linewidth=0.7,label="Boosted distribution", cut=0,linestyle="dashed",ax=ax)
+    sns.kdeplot( dur_cum_boost.stack(event=("lead_time","member")).sel(typ="cum").values, bw_adjust=0.75,color="sienna",alpha=0.3,linewidth=0.7,label="Boosted distribution", cut=0,linestyle="dashed",ax=ax,fill=True)
     ax.axvline(cum_parent,linestyle="-",color="k",label="Parent event")
     return ax
     
@@ -286,9 +286,13 @@ def plot_temp_z500_maps(times,top,bottom,atm_mn,start,save_info,fsize=(8, 8)):
     # === fig configs ===
     # add borders and coastlines
     for i,a in enumerate(f.axs.flat):
+        if fsize[-1] == 8 and i > 8:
+            txt_i = 8
+        else:
+            txt_i = i
         a = pco.add_country_borders(a)
         a.coastlines(linewidth=0.1)
-        a.text(0.01,0.9,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
+        a.text(0.01,0.9,string.ascii_lowercase[txt_i],weight="bold",transform=a.transAxes)
     # make it have a tight layout (more difficult with cartopy)
     f.fig.subplots_adjust(left=0.08,right=0.88,bottom=0.08,top=0.92,wspace=0.05,hspace=0.02,)    
     cax = f.fig.add_axes([0.90, 0.08, 0.035, 0.84])
