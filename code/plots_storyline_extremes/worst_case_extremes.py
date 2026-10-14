@@ -43,7 +43,7 @@ def find_max_nl_for_violins(extremes,nl,heat,capac):
 def find_cum_for_violins(extremes,heat,capac):
     """"get the duration and day of year of the end (as a pd dataframe, necessary for sns violinplot) for each energy shortfall event in the dataset extremes, for a given heating scenario heat and capacity scenario capac"""
     extreme_scen = extremes.sel(heating_scenario=heat,capacity_scenario=capac)
-    cum_plot = extreme_scen.sel(typ="cum").dropna(dim="event",how="all").to_series().reset_index(name="Cumulative threshold"+ "\n"+  "exceedance [TWh]")
+    cum_plot = extreme_scen.sel(typ="cum").dropna(dim="event",how="all").to_series().reset_index(name="Severity [TWh]")
     return cum_plot
 
 def find_dur_for_violins(extremes,heat,capac):
@@ -65,8 +65,8 @@ def plot_violin_clim_halves(to_plot,ax,x):
                 palette = [pco.colors[1],pco.colors[0]],
                 alpha=0.5,
             )
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
+    #ax.spines['right'].set_visible(False)
+    #ax.spines['top'].set_visible(False)
     ax.set_xlabel("")       
     ax.legend_.remove()
     pco.set_grid(ax) 
@@ -231,6 +231,20 @@ for i,scen in enumerate(two_representative_scenarios):
     to_plot_here = ds_to_plot.isel(scen=i)
     plot_weather_maps(ax_map,to_plot_here,"RdBu_r",-abs_val,abs_val,ds_to_plot.Z500.min(),ds_to_plot.Z500.max())
 
+    #print stat info about each scenario
+    extreme_scen = extremes.sel(heating_scenario=heat,capacity_scenario=capac)
+    ds_here = extreme_scen.sel(typ="cum").dropna(dim="event",how="all")
+    mn = ds_here.mean("event").values
+    print(f"mean values: [{mn[0]:.3}, {mn[1]:.3}] (mean = {(mn[0]+mn[1])/2:.3}), a {(mn[0]-mn[1])*100/mn[0] :.3}% difference with climate change")
+    mn = []
+    mins = []
+    for clim in ['historical','SSP370']:
+        ds = ds_here.sel(climate=clim).dropna(dim="event")
+        mn.append(ds.sortby(ds,ascending=0)[0:5].mean().item())
+        mins.append(ds.sortby(ds,ascending=0)[0:5].min().item())
+    print(f"extremes: [{mn[0]:.3}, {mn[1]:.3}], a {(mn[0]-mn[1])*100/mn[0] :.3}% difference with climate change")
+    print(f"extreme min: [{mins[0]:.3}, {mins[1]:.3}], a {(mins[0]-mins[1])*100/mins[0] :.3}% difference with climate change")
+
 # Figure configs
 axes = fig.get_axes()
 # letter labels (a,b,c...)
@@ -262,10 +276,10 @@ fig.savefig(f"../../figs_storyline_extremes/spa_season_map.png",bbox_inches="tig
 print("figure 1 saved")
 
 # =========================
-# === Appendix figure 6 ===
+# === Appendix figure 7 ===
 # =========================
 
-print("plotting appendix figure 6")
+print("plotting appendix figure 7")
 # plot abs values of wind speeds
 f,ax=plt.subplots(1,2,figsize=(7.2,3),subplot_kw={'projection':ccrs.PlateCarree()})
 for i,scen in enumerate(two_representative_scenarios):
@@ -282,7 +296,7 @@ f.colorbar(
     label="Wind speed [m/s]",
 )
 f.savefig(f"../../figs_storyline_extremes/wind_maps_WCED.png",bbox_inches="tight",dpi=1200,transparent=True)
-print("appendix figure 6 saved")
+print("appendix figure 7 saved")
 
 ## =============================
 # === Appendix figures 2-3,6 ===
@@ -315,7 +329,7 @@ for i, a in enumerate([ax_cum,ax_doy,ax_dur]):
             ax.set_ylabel("")
         ax.text(0.01,0.97,string.ascii_lowercase[n],weight="bold",transform=ax.transAxes)
 
-f_cum.text(0.01,0.5,"Cumulative threshold exceedance [TWh]",rotation='vertical',verticalalignment='center', horizontalalignment='center')
+f_cum.text(0.01,0.5,"Severity [TWh]",rotation='vertical',verticalalignment='center', horizontalalignment='center')
 f_dur.text(0.01,0.5,"Duration [days]",rotation='vertical',verticalalignment='center', horizontalalignment='center')
 
 typ = ["SPA","seasonality","duration"]
@@ -331,6 +345,7 @@ print("appendix figures 2-3+6 saved")
 # ============================
 # === Appendix figures 4-5 ===
 # ============================
+print("plotting appendix figures 4-5")
 
 # iterate over all scenarios
 for x, climate in enumerate(["historical", "SSP370"]):
@@ -374,8 +389,86 @@ for x, climate in enumerate(["historical", "SSP370"]):
             ax.coastlines(linewidth=0.1)
             ax.set_title("")
     f.fig.savefig(f"../../figs_storyline_extremes/weather_WCED_{climate}.png",bbox_inches="tight",dpi=1200,transparent=True)
+print("appendix figures 4-5 saved")
 
 
+# ===========================
+# === Appendix figure 8-9 ===
+# ===========================
 
+for i,scen in enumerate(two_representative_scenarios):
+    heat = scen[1]
+    capac = scen[0]
+    climate = "SSP370"
+    nl_one_scen = nl.sel(heating_scenario=heat,capacity_scenario=capac,climate=climate)
+    extreme_here = extremes.sel(heating_scenario=heat,capacity_scenario=capac,climate=climate).dropna(dim="event",how="all")
+    dur = extreme_here.sel(typ = "dur")
+    cum = extreme_here.sel(typ="cum")
+    cum = cum.sortby(cum,ascending=False)
+    
+    # get atmospheric map for peak net load in each of the top 5 events
+    atms = []
+    for top_event in cum[0:5]:
+        dur_event = dur.sel(event = top_event.event.item())
+        mem = top_event.member.item()
+        nl_here = nl_one_scen.sel(member=mem,time=slice(top_event.time.item()-timedelta(dur_event.item()),top_event.time.item()))
+        peak_date = nl_here.idxmax(dim="time").item()
+        atm_here=atm[climate].sel(member=mem,time=slice(top_event.time.item()-timedelta(dur_event.item()),top_event.time.item()))#str(peak_date)[0:10])
+        atm_here["time_rel"] = atm_here["time"]-atm_here["time"][0]
+        atm_here = atm_here.swap_dims({"time": "time_rel"})
+        atms.append(atm_here) 
+
+    ds = xr.concat(atms,dim="event")
+    end_day = int(ds.time_rel[-1].item()/60/60/24/1e9)
+    time_dates = [f"{d}D" for d in range(0,end_day+1,5)]
+    ds=ds.sel(time_rel=time_dates)
+    zmin = ds.Z500.min()
+    zmax=ds.Z500.max()
+    f = ds.temperature.plot(x="lon",y="lat",col="event",row="time_rel",transform=ccrs.PlateCarree(),subplot_kws={"projection": ccrs.PlateCarree()},vmin=-35,vmax=35,cmap="RdBu_r",add_colorbar=False,figsize=(8,8))
+    # plot z500 maps as contours
+    for ax, sel_dict in zip(f.axs.flat, f.name_dicts.flat):
+        if sel_dict is not None:  # handles empty subplots if grid isn't full
+            # plot z500 maps as contours
+            for n,level_type in enumerate([100,25]):
+                level = [round(int(zmin),-2) +x*level_type for x in range(int((zmax-zmin)/10)+1)]
+                z_slice = ds["Z500"].sel(sel_dict)
+                cs = z_slice.plot.contour(
+                    ax=ax,
+                    x="lon",
+                    y="lat",
+                    colors="k",
+                    levels=level,
+                    linewidths = 0.6 - 0.3*n,
+                    alpha=1- 0.6*n,
+                )
+                if n ==0:
+                    ax.clabel(cs,inline=True,fontsize=6,levels=cs.levels, inline_spacing=3)
+        
+            # === fig configs ===
+            # add borders and coastlines
+            ax = pco.add_country_borders(ax)
+            ax.coastlines(linewidth=0.1)
+            ax.set_title("")
+    # make it have a tight layout (more difficult with cartopy)
+    f.fig.subplots_adjust(left=0.08,right=0.88,bottom=0.08,top=0.92,wspace=0.05,hspace=0.02,)    
+    cax = f.fig.add_axes([0.90, 0.08, 0.035, 0.84])
+    f.fig.colorbar(
+        f.axs[0, 0].collections[0],
+        cax=cax,
+        label="Temperature anomaly[$^\circ$C]",
+    )
+    f.set_titles("")
+    # add labels to differentiate simulations and dates
+    for i, label in enumerate([f"Event {x}"for x in range(1,6)]):
+        f.axs[0,i].set_title(label)
+    for j, label in enumerate([d[:-1] for d in time_dates]):
+        ax = f.axs[j,0]
+        ax.text(
+            -0.05, 0.5,label,
+            transform=ax.transAxes,
+            ha="right",va="center",fontsize=11,rotation=90,
+        )
+    f.fig.supylabel("Time [days since onset]")
+    f.fig.savefig(f"../../figs_storyline_extremes/weather_snapshots_WCED_{heat}_{capac}.png",bbox_inches="tight",dpi=1200,transparent=True)
 
 

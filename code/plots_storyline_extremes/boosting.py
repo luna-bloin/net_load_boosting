@@ -151,13 +151,7 @@ def plot_boosting_overview(nl_boost,nl_parent_only_event,start,end,qu_parent,cum
         (nl_boost_right_format/1000).max("event"),
         alpha=0.3,color=colors[2],linewidth=0,label="Range of boosted simulations"
     )
-    #plot cumulative threshold exceedence
-    ax2.fill_between(
-        cumsum_boosts[0].time.values,
-        cumsum_boosts.min("event"), 
-        cumsum_boosts.max("event"),
-        alpha=0.3,color=colors[2],linewidth=0
-    )
+    
     
     # ===========================
     # === Plot 4 tech drivers ===
@@ -222,7 +216,7 @@ def plot_boosting_overview(nl_boost,nl_parent_only_event,start,end,qu_parent,cum
             y=0.95
         a.text(0.01,y,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
     ax1.set_ylabel("Net load [TW]")
-    ax2.set_ylabel("Cumulative threshold"+ "\n"+"exceedance [TWh]")
+    ax2.set_ylabel("Severity [TWh]")
     ax3.set_ylabel("Demand [TW]")
     ax4.set_ylabel("Generation [TW]")
     ax5.set_ylabel("Generation [TW]")
@@ -244,9 +238,15 @@ def plot_boosting_overview(nl_boost,nl_parent_only_event,start,end,qu_parent,cum
 def plot_distrib_with_boosting(ax, cum_scenario,dur_cum_boost,cum_parent,heat,capac):
     """code for plotting figure 5"""        
     #plot distributions
-    sns.kdeplot(cum_scenario.values, bw_adjust=0.75,color="k",linewidth=0.7,label="Parent distribution", cut=0,fill=True,ax=ax)
-    sns.kdeplot( dur_cum_boost.stack(event=("lead_time","member")).sel(typ="cum").values, bw_adjust=0.75,color="sienna",alpha=0.3,linewidth=0.7,label="Boosted distribution", cut=0,linestyle="dashed",ax=ax,fill=True)
+    sns.kdeplot(cum_scenario.values, bw_adjust=0.75,color="k",linewidth=0.7,label="Unperturbed ensemble", cut=0,fill=True,ax=ax)
+    sns.kdeplot( dur_cum_boost.stack(event=("lead_time","member")).sel(typ="cum").values, bw_adjust=0.75,color="sienna",alpha=0.3,linewidth=0.7,label="Boosted ensemble", cut=0,linestyle="dashed",ax=ax,fill=True)
     ax.axvline(cum_parent,linestyle="-",color="k",label="Parent event")
+    for i in range(5):
+        if i ==0:
+            lab = "Five most severe events"
+        else:
+            lab = "__no"
+        ax.axvline(cum_scenario.sortby(cum_scenario,ascending=False)[i],linestyle="-",color="k",alpha=0.5,label=lab, linewidth=0.7)
     return ax
     
 def plot_temp_z500_maps(times,top,bottom,atm_mn,start,save_info,fsize=(8, 8)):
@@ -424,14 +424,14 @@ plot_distrib_with_boosting(axs[1],*boost_B_data)
 axs[0].set_ylabel("Probability density")
 axs[1].set_ylabel("")
 for i,a in enumerate(axs):
-    a.set_xlabel("Cumulative threshold exceedance [TWh]")
+    a.set_xlabel("Severity [TWh]")
     a.set_title("")
     pco.set_grid(a)
     a.text(0.015,0.94,string.ascii_lowercase[i],weight="bold",transform=a.transAxes)
     a.set_xlim(0,None)
 plt.tight_layout()
-plt.subplots_adjust(bottom=0.25)
+plt.subplots_adjust(bottom=0.3)
 handles, labels = axs[0].get_legend_handles_labels()
-f.legend(handles, labels, loc='lower center',ncol=3, frameon=False)
+f.legend(handles, labels, loc='lower center',ncol=2, frameon=False)
 f.savefig(f"../../figs_storyline_extremes/distribution_with_boosting_compare.png",bbox_inches="tight",dpi=600,transparent=True)
 print("figure saved")
