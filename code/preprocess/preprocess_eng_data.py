@@ -31,7 +31,7 @@ out_path = '/net/xenon/climphys/lbloin/energy_boost/' #save location
 
 
 if __name__ == "__main__":    
-    boost = sys.argv[1] # "" if not boost, date of boost otherwise
+    boost = sys.argv[1] # '' if not boost, date of boost otherwise
     try:
         boost_realization = sys.argv[2]
     except:
@@ -62,7 +62,10 @@ if __name__ == "__main__":
     abs_output = outputs["energy_output"] * installed_capacity.GWh
     # Add weather-insensitive demand
     if len(boost) == 0:
-        members = ["A","B","C"]
+        if scenario =="SSP245":
+            members = ["A"]
+        else:
+            members = ["A","B","C"]
     else:
         members = list(range(1,len(outputs.member)+1))
     ds_demand = pc.open_weather_insensitive_demand(scenario,boost,members)
@@ -89,7 +92,10 @@ if __name__ == "__main__":
     # calculate hydro_inflow (only keep countries that have hydro inflow)
     hydro_inflow_full = abs_output.sel(technology="hydro_inflow").dropna(dim="country",how="all")
     # open optimized storage from francesco's energy model
-    storage_ds = hs.open_storage(scenario,"")
+    if scenario == "SSP245": # use ssp370 data since we didnt do the storage analysis for ssp245
+        storage_ds = hs.open_storage("SSP370","")
+    else:
+        storage_ds = hs.open_storage(scenario,"")
     storage_roll= storage_ds.rolling(time=24*21,center=True).mean().stack(dim=("member","time")) # rolling average to smooth the curve
     storage_max = storage_ds.max(("member","time")) #max value, to cap the storage
     if len(boost) == 0:

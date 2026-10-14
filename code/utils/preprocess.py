@@ -47,11 +47,8 @@ def save_eng_var(scenario,variable,extra,boost,boost_realization):
                 for file in files:
                     dss.append(read_df_to_xr(file))
                 ds_all.append(xr.concat(dss,dim="time"))
-            if scenario == "SSP245":
-                ds_all = ds_all[0] #only one member
-            else:
-                ds_all = xr.concat(ds_all,dim="member")
-                ds_all["member"] = members
+            ds_all = xr.concat(ds_all,dim="member")
+            ds_all["member"] = members
             ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")        
             ds_all.to_netcdf(save_file)
             return ds_all.load()
@@ -68,8 +65,8 @@ def save_eng_var(scenario,variable,extra,boost,boost_realization):
             dss = []
             for file in files:
                 dss.append(read_df_to_xr(file))
-                ds_all = xr.concat(dss,dim="member")
-                ds_all["member"] = list(range(1,len(ds_all.member)+1))
+            ds_all = xr.concat(dss,dim="member")
+            ds_all["member"] = list(range(1,len(ds_all.member)+1))
             ds_all = ds_all.to_dataset(name=variable).convert_calendar("noleap")#.sel(time=slice(boost,None)) # make sure that you keep only the dates after boosting (files are concat with parents for clim2energy reasons, not necessary here)        
             ds_all.to_netcdf(save_file)
             return ds_all.load()
@@ -103,7 +100,7 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
     # open data for all technologies considered
     for tech in tqdm(techs):
         print(tech)
-        if tech == "Wind-power" or tech == "PV":
+        if (tech == "Wind-power" or tech == "PV") and scenario != "SSP245":
             # open spatial CFs and save them for available techs
             save_spatial_data(tech,scenario,boost,boost_realization)
         # open and save tech output from climate2energy
@@ -123,26 +120,32 @@ def concat_all_eng_vars(techs,scenario,out_path,heat_scenario,boost,boost_realiz
             eng_vars.append(ds.to_dataset(name="energy_output"))
         else:
             ds = save_eng_var(scenario,tech, techs[tech],boost,boost_realization)[tech]
-            if tech == "hydro_inflow":
-                # need to concatenate first data point before boosting (up to a week before) to get seamless data from boosting
-                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_inflow_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds)[tech]
-                ds = ds.sel(time=slice(boost,None)) # to make sure that no time before boosting is selected
-                first_before_boost = ut.str_to_cftime_noleap(boost) - timedelta(days=1)
-                while len(ds_parent.sel(time=str(first_before_boost)[0:10]).time) == 0:
-                    first_before_boost -= timedelta(days=1)
+            if len(boost) >0:
+                if tech == "hydro_inflow":
+                    # need to concatenate first data point before boosting (up to a week before) to get seamless data from boosting
+                    ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_inflow_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds)[tech]
+                    ds = ds.sel(time=slice(boost,None)) # to make sure that no time before boosting is selected
+                    first_before_boost = ut.str_to_cftime_noleap(boost) - timedelta(days=1)
+                    while len(ds_parent.sel(time=str(first_before_boost)[0:10]).time) == 0:
+                        first_before_boost -= timedelta(days=1)
                 
-                ds_parent = ds_parent.sel(time=slice(str(first_before_boost-timedelta(days=7))[0:10],str(first_before_boost)[0:10]))
-                ds = xr.concat([ds_parent,ds],dim="time")
-                
-                ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
-                # remove excess time before boosting to match all other datasets
-                ds = ds.sel(time=slice(ut.str_to_cftime_noleap(boost)-timedelta(days=7),None)) # s
-            elif tech == "hydro_ror":
-                # need to concatenate first data point to get seamless data from boosting
-                ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_ror_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds).sel(time=slice(str(ut.str_to_cftime_noleap(boost)-timedelta(days=7))[0:10],str(ut.str_to_cftime_noleap(boost))[0:10]))[tech]
-                ds = xr.concat([ds_parent,ds],dim="time")
-                
-                ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
+                    ds_parent = ds_parent.sel(time=slice(str(first_before_boost-timedelta(days=7))[0:10],str(first_before_boost)[0:10]))
+                    ds = xr.concat([ds_parent,ds],dim="time")
+                    
+                    ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
+                    # remove excess time before boosting to match all other datasets
+                    ds = ds.sel(time=slice(ut.str_to_cftime_noleap(boost)-timedelta(days=7),None)) # s
+                elif tech == "hydro_ror":
+                    # need to concatenate first data point to get seamless data from boosting
+                    ds_parent = xr.open_dataset(f"{out_path}country_avgd_hydro_ror_{scenario}.nc").sel(member=boost_realization).drop_vars("member").broadcast_like(ds).sel(time=slice(str(ut.str_to_cftime_noleap(boost)-timedelta(days=7))[0:10],str(ut.str_to_cftime_noleap(boost))[0:10]))[tech]
+                    ds = xr.concat([ds_parent,ds],dim="time")
+                    
+                    ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
+            else:
+                if tech == "hydro_inflow":
+                    ds = ds.resample(time="1h").ffill()/(7*24) # to get hourly values, not weekly
+                elif tech == "hydro_ror":
+                    ds = ds.resample(time="1h").ffill()/24 # to get hourly values, not daily
             eng_vars.append(ds.to_dataset(name="energy_output"))
     return eng_vars
 
@@ -276,13 +279,19 @@ def open_weather_insensitive_demand(scenario,boost,members):
             time_range = ut.get_time_range_noleap(2080,2100)
         elif scenario == "historical":
             time_range = ut.get_time_range_noleap(1995,2015)
+        elif scenario == "SSP245":
+            time_range = ut.get_time_range_noleap(2015,2100)
         #open profile and values, multiply them
         profile = open_demand_profiles()
         values = open_weather_insensitive_demand_values(column)
         ds_demand.append( (values * profile).sum("demand_type").values)
     # create 20-year long xarray dataset with the yearly values copied 20 times, for each member and heating/capacity scenario
+    if scenario == "SSP245":
+        len_data = 85
+    else:
+        len_data = 20
     ds_demand = xr.DataArray(
-        data=np.tile(ds_demand,(len(members),2,1,1,20)),
+        data=np.tile(ds_demand,(len(members),2,1,1,len_data)),
         dims=['member','heating_scenario','capacity_scenario','country', 'time'],
         coords={
             'capacity_scenario': capacs,

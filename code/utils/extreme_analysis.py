@@ -82,6 +82,8 @@ def open_atm_vars(path):
     dss_scen = {}
     dss_mn = []
     for scenario in ut.CESM2_REALIZATION_DICT:
+        if scenario == "SSP245":
+            continue # not included in this analysis
         years = ut.get_time_range(scenario)
         dss = []
         for var in ["temperature","s_hub","Z500","global_horizontal"]:

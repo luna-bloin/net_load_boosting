@@ -13,6 +13,7 @@ rng = default_rng()
 CESM2_REALIZATION_DICT = {
     "historical": {"A": "1500", "B": "1000", "C": "1200"},
     "SSP370": {"A": "1500", "B": "0600", "C": "0900"},
+    "SSP245": {"A": "1500"},
 }
 
 scen_config_dict = {
